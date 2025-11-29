@@ -43,6 +43,7 @@ async def callback(code: str = Query(...), state: str = Query(None)):
             email=user_profile.get("email", ""),
             access_token=access_token,
             refresh_token=refresh_token,
+            product=user_profile.get("product", ""),
             profile_image_url=image_url
         )
 

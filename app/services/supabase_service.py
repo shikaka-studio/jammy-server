@@ -21,6 +21,7 @@ class SupabaseService:
         email: str,
         access_token: str,
         refresh_token: str,
+        product: str,
         profile_image_url: str | None = None
     ):
         data = {
@@ -29,6 +30,7 @@ class SupabaseService:
             "email": email,
             "access_token": access_token,
             "refresh_token": refresh_token,
+            "product": product,
             "profile_image_url": profile_image_url
         }
         return self.client.table("users").upsert(data, on_conflict="spotify_id").execute()
