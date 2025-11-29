@@ -34,11 +34,11 @@ async def get_all_rooms():
         for room in result.data:
             members = await supabase_service.get_room_members(room["id"])
             rooms_with_members.append({
-                "room": room,
+                **room,
                 "members": members.data
             })
 
-        return {"rooms": rooms_with_members}
+        return rooms_with_members
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
