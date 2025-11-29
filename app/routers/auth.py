@@ -1,7 +1,9 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import RedirectResponse
 from app.services.spotify_service import SpotifyService
 from app.services.supabase_service import SupabaseService
+from app.services.jwt_service import create_access_token
+from app.dependencies import get_current_user
 from app.config import get_settings
 import secrets
 
@@ -34,11 +36,12 @@ async def callback(code: str = Query(...), state: str = Query(None)):
 
         # Get user profile
         user_profile = await spotify_service.get_current_user(access_token)
+        spotify_id = user_profile["id"]
         image_url = user_profile.get("images", [{}])[0].get("url", "")
 
         # Save/update user in database
         await supabase_service.create_user(
-            spotify_id=user_profile["id"],
+            spotify_id=spotify_id,
             display_name=user_profile.get("display_name", ""),
             email=user_profile.get("email", ""),
             access_token=access_token,
@@ -47,11 +50,13 @@ async def callback(code: str = Query(...), state: str = Query(None)):
             profile_image_url=image_url
         )
 
-        # Redirect to frontend with tokens
+        # Create our own JWT token for the frontend
+        jwt_token = create_access_token(spotify_id)
+
+        # Redirect to frontend with our JWT token
         redirect_url = (
             f"{settings.frontend_url}/callback"
-            f"?access_token={access_token}"
-            f"&spotify_id={user_profile['id']}"
+            f"?token={jwt_token}"
         )
         return RedirectResponse(url=redirect_url)
 
@@ -59,28 +64,60 @@ async def callback(code: str = Query(...), state: str = Query(None)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/me")
+async def get_current_user_profile(current_user: dict = Depends(get_current_user)):
+    """
+    Get the current authenticated user's profile.
+    Protected endpoint - requires valid JWT token.
+    """
+    return {
+        "id": current_user["id"],
+        "spotify_id": current_user["spotify_id"],
+        "display_name": current_user["display_name"],
+        "email": current_user["email"],
+        "product": current_user["product"],
+        "profile_image_url": current_user.get("profile_image_url"),
+        "created_at": current_user["created_at"],
+        "access_token": current_user["access_token"],
+    }
+
 @router.post("/refresh")
-async def refresh_token(refresh_token: str):
-    """Refresh an expired access token"""
+async def refresh_spotify_token(current_user: dict = Depends(get_current_user)):
+    """
+    Refresh the user's Spotify access token.
+    Protected endpoint - requires valid JWT token.
+    """
     try:
+        refresh_token = current_user.get("refresh_token")
+        if not refresh_token:
+            raise HTTPException(status_code=400, detail="No refresh token available")
+
         token_data = await spotify_service.refresh_access_token(refresh_token)
 
         if "error" in token_data:
-            raise HTTPException(status_code=400, detail=token_data["error_description"])
+            raise HTTPException(status_code=400, detail=token_data.get("error_description", "Refresh failed"))
 
-        return {
-            "access_token": token_data["access_token"],
-            "expires_in": token_data["expires_in"]
-        }
+        # Update tokens in database
+        new_access_token = token_data["access_token"]
+        new_refresh_token = token_data.get("refresh_token", refresh_token)
+
+        await supabase_service.update_user_tokens(
+            current_user["spotify_id"],
+            new_access_token,
+            new_refresh_token
+        )
+
+        return {"message": "Spotify token refreshed successfully"}
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@router.get("/me")
-async def get_current_user(spotify_id: str):
-    """Get current user from database"""
-    try:
-        user = await supabase_service.get_user_by_spotify_id(spotify_id)
-        return user.data
-    except Exception as e:
-        raise HTTPException(status_code=404, detail="User not found")
+@router.post("/logout")
+async def logout(current_user: dict = Depends(get_current_user)):
+    """
+    Logout the user (optional: could invalidate tokens in DB).
+    For now, the frontend just discards the JWT.
+    """
+    return {"message": "Logged out successfully"}
