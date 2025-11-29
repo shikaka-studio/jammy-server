@@ -64,6 +64,9 @@ class SupabaseService:
     async def get_room_by_id(self, room_id: str):
         return self.client.table("rooms").select("*").eq("id", room_id).single().execute()
 
+    async def get_all_rooms(self):
+        return self.client.table("rooms").select("*, host:users!host_id(*)").execute()
+
     async def get_rooms_by_host(self, host_id: str):
         return self.client.table("rooms").select("*").eq("host_id", host_id).eq("is_active", True).execute()
 

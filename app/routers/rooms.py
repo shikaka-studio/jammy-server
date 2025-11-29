@@ -24,6 +24,25 @@ def generate_room_code(length: int = 6) -> str:
     return ''.join(secrets.choice(characters) for _ in range(length))
 
 
+@router.get("")
+async def get_all_rooms():
+    """Get all rooms with host and members info"""
+    try:
+        result = await supabase_service.get_all_rooms()
+
+        rooms_with_members = []
+        for room in result.data:
+            members = await supabase_service.get_room_members(room["id"])
+            rooms_with_members.append({
+                "room": room,
+                "members": members.data
+            })
+
+        return {"rooms": rooms_with_members}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/create")
 async def create_room(request: CreateRoomRequest):
     """Create a new listening room"""
