@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     # App
     secret_key: str
     frontend_url: str
+    full_frontend_url: str
 
     class Config:
         env_file = ".env"
