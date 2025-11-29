@@ -49,7 +49,7 @@ async def callback(code: str = Query(...), state: str = Query(None)):
 
         # Redirect to frontend with tokens
         redirect_url = (
-            f"{settings.frontend_url}/auth/callback"
+            f"{settings.frontend_url}/callback"
             f"?access_token={access_token}"
             f"&spotify_id={user_profile['id']}"
         )
