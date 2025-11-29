@@ -16,7 +16,7 @@ async def login():
     """Initiate Spotify OAuth flow"""
     state = secrets.token_urlsafe(16)
     auth_url = spotify_service.get_auth_url(state)
-    return {"auth_url": auth_url}
+    return RedirectResponse(url=auth_url)
 
 
 @router.get("/callback")
