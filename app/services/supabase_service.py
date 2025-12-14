@@ -70,13 +70,6 @@ class SupabaseService:
     async def get_rooms_by_host(self, host_id: str):
         return self.client.table("rooms").select("*").eq("host_id", host_id).eq("is_active", True).execute()
 
-    async def update_room_playback(self, room_id: str, track_uri: str, position_ms: int):
-        data = {
-            "current_track_uri": track_uri,
-            "current_position_ms": position_ms
-        }
-        return self.client.table("rooms").update(data).eq("id", room_id).execute()
-
     async def close_room(self, room_id: str):
         return self.client.table("rooms").update({"is_active": False}).eq("id", room_id).execute()
 
