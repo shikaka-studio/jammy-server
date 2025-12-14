@@ -38,3 +38,47 @@ async def get_current_user(
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+async def verify_room_host(
+    room_code: str,
+    current_user: dict = Depends(get_current_user)
+) -> dict:
+    """
+    Verify that the current user is the host of the specified room.
+
+    Args:
+        room_code: The room code to verify
+        current_user: Current authenticated user (from get_current_user dependency)
+
+    Returns:
+        Room data if user is host
+
+    Raises:
+        HTTPException(404): Room not found
+        HTTPException(403): User is not the host
+    """
+    try:
+        room = await supabase_service.get_room_by_code(room_code)
+
+        if not room.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Room not found"
+            )
+
+        if room.data['host_id'] != current_user['id']:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the room host can control playback"
+            )
+
+        return room.data
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )

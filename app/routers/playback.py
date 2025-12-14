@@ -1,12 +1,171 @@
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Depends
 from pydantic import BaseModel
 from app.services.supabase_service import SupabaseService
 from app.services.spotify_service import SpotifyService
+from app.services.playback_manager import PlaybackManager
+from app.dependencies import verify_room_host
 
 router = APIRouter()
 supabase_service = SupabaseService()
 spotify_service = SpotifyService()
+playback_manager = PlaybackManager()
 
+
+# ==================== ROOM PLAYBACK STATE ====================
+
+@router.get("/room/{room_code}/state")
+async def get_room_playback_state(room_code: str):
+    """
+    Get current playback state for a room's active session.
+    Anyone can call this - no authentication required for viewing state.
+
+    Returns:
+    {
+        "is_playing": bool,
+        "current_track": {
+            "id": str,
+            "name": str,
+            "artists": str,
+            "album_image_url": str,
+            "duration_ms": int,
+            "spotify_track_id": str
+        } | null,
+        "position_ms": int,
+        "duration_ms": int,
+        "playback_started_at": str | null
+    }
+    """
+    try:
+        room = await supabase_service.get_room_by_code(room_code)
+        if not room.data:
+            raise HTTPException(status_code=404, detail="Room not found")
+
+        # Get active session
+        try:
+            session = await supabase_service.get_active_session(room.data["id"])
+            session_id = session.data["id"]
+            state = await playback_manager.get_playback_state(session_id)
+            return state
+        except Exception:
+            # No active session, return empty state
+            return {
+                "is_playing": False,
+                "current_track": None,
+                "position_ms": 0,
+                "duration_ms": 0,
+                "playback_started_at": None
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== HOST CONTROLS ====================
+
+@router.post("/room/{room_code}/play")
+async def play_room(
+    room_code: str,
+    room: dict = Depends(verify_room_host)
+):
+    """
+    Start playback in a room (host only).
+    If paused, resumes. If stopped, starts from beginning of queue.
+    """
+    try:
+        # Get or create active session
+        try:
+            session = await supabase_service.get_active_session(room["id"])
+            session_id = session.data["id"]
+        except Exception:
+            # No active session, create one
+            session_result = await supabase_service.create_session(room["id"])
+            session_id = session_result.data[0]["id"]
+
+        current_state = await playback_manager.get_playback_state(session_id)
+
+        if not current_state["is_playing"] and current_state.get("position_ms", 0) > 0:
+            state = await playback_manager.resume_playback(session_id)
+        else:
+            state = await playback_manager.start_playback(session_id)
+
+        return state
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/room/{room_code}/pause")
+async def pause_room(
+    room_code: str,
+    room: dict = Depends(verify_room_host)
+):
+    """
+    Pause playback in a room (host only).
+    """
+    try:
+        # Get active session
+        session = await supabase_service.get_active_session(room["id"])
+        if not session.data:
+            raise HTTPException(status_code=404, detail="No active session")
+
+        session_id = session.data["id"]
+        state = await playback_manager.pause_playback(session_id)
+        return state
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/room/{room_code}/resume")
+async def resume_room(
+    room_code: str,
+    room: dict = Depends(verify_room_host)
+):
+    """
+    Resume paused playback in a room (host only).
+    """
+    try:
+        # Get active session
+        session = await supabase_service.get_active_session(room["id"])
+        if not session.data:
+            raise HTTPException(status_code=404, detail="No active session")
+
+        session_id = session.data["id"]
+        state = await playback_manager.resume_playback(session_id)
+        return state
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/room/{room_code}/skip")
+async def skip_room(
+    room_code: str,
+    room: dict = Depends(verify_room_host)
+):
+    """
+    Skip to next song in queue (host only).
+    """
+    try:
+        # Get active session
+        session = await supabase_service.get_active_session(room["id"])
+        if not session.data:
+            raise HTTPException(status_code=404, detail="No active session")
+
+        session_id = session.data["id"]
+        state = await playback_manager.skip_to_next(session_id)
+        return state
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== LEGACY ENDPOINTS (DEPRECATED) ====================
+# These endpoints are kept for individual device testing
+# They use Spotify Web API directly (not server-managed playback)
 
 class PlayTrackRequest(BaseModel):
     track_uri: str
@@ -29,11 +188,9 @@ class TransferRequest(BaseModel):
     play: bool = False
 
 
-# ==================== DEVICE ENDPOINTS ====================
-
 @router.get("/devices")
 async def get_devices(authorization: str = Header(...)):
-    """Get user's available Spotify devices"""
+    """Get user's available Spotify devices (LEGACY)"""
     try:
         access_token = authorization.replace("Bearer ", "")
         devices = await spotify_service.get_available_devices(access_token)
@@ -44,7 +201,7 @@ async def get_devices(authorization: str = Header(...)):
 
 @router.put("/transfer")
 async def transfer_playback(request: TransferRequest, authorization: str = Header(...)):
-    """Transfer playback to a different device"""
+    """Transfer playback to a different device (LEGACY)"""
     try:
         access_token = authorization.replace("Bearer ", "")
         success = await spotify_service.transfer_playback(
@@ -61,11 +218,9 @@ async def transfer_playback(request: TransferRequest, authorization: str = Heade
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ==================== PLAYBACK STATE ====================
-
 @router.get("/state")
 async def get_playback_state(authorization: str = Header(...)):
-    """Get current playback state"""
+    """Get current playback state (LEGACY)"""
     try:
         access_token = authorization.replace("Bearer ", "")
         state = await spotify_service.get_playback_state(access_token)
@@ -76,7 +231,7 @@ async def get_playback_state(authorization: str = Header(...)):
 
 @router.get("/currently-playing")
 async def get_currently_playing(authorization: str = Header(...)):
-    """Get currently playing track"""
+    """Get currently playing track (LEGACY)"""
     try:
         access_token = authorization.replace("Bearer ", "")
         current = await spotify_service.get_currently_playing(access_token)
@@ -85,11 +240,9 @@ async def get_currently_playing(authorization: str = Header(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ==================== PLAYBACK CONTROLS ====================
-
 @router.put("/play")
 async def play(request: PlayTrackRequest | None = None, authorization: str = Header(...)):
-    """Start or resume playback"""
+    """Start or resume playback (LEGACY)"""
     try:
         access_token = authorization.replace("Bearer ", "")
 
@@ -101,7 +254,6 @@ async def play(request: PlayTrackRequest | None = None, authorization: str = Hea
                 position_ms=request.position_ms
             )
         else:
-            # Resume current playback
             success = await spotify_service.start_playback(
                 access_token,
                 device_id=request.device_id if request else None
@@ -119,7 +271,7 @@ async def play(request: PlayTrackRequest | None = None, authorization: str = Hea
 
 @router.put("/pause")
 async def pause(authorization: str = Header(...), device_id: str | None = None):
-    """Pause playback"""
+    """Pause playback (LEGACY)"""
     try:
         access_token = authorization.replace("Bearer ", "")
         success = await spotify_service.pause_playback(access_token, device_id)
@@ -136,7 +288,7 @@ async def pause(authorization: str = Header(...), device_id: str | None = None):
 
 @router.post("/next")
 async def skip_next(authorization: str = Header(...), device_id: str | None = None):
-    """Skip to next track"""
+    """Skip to next track (LEGACY)"""
     try:
         access_token = authorization.replace("Bearer ", "")
         success = await spotify_service.skip_to_next(access_token, device_id)
@@ -153,7 +305,7 @@ async def skip_next(authorization: str = Header(...), device_id: str | None = No
 
 @router.post("/previous")
 async def skip_previous(authorization: str = Header(...), device_id: str | None = None):
-    """Skip to previous track"""
+    """Skip to previous track (LEGACY)"""
     try:
         access_token = authorization.replace("Bearer ", "")
         success = await spotify_service.skip_to_previous(access_token, device_id)
@@ -170,7 +322,7 @@ async def skip_previous(authorization: str = Header(...), device_id: str | None 
 
 @router.put("/seek")
 async def seek(request: SeekRequest, authorization: str = Header(...)):
-    """Seek to position in currently playing track"""
+    """Seek to position in currently playing track (LEGACY)"""
     try:
         access_token = authorization.replace("Bearer ", "")
         success = await spotify_service.seek_to_position(
@@ -191,7 +343,7 @@ async def seek(request: SeekRequest, authorization: str = Header(...)):
 
 @router.put("/volume")
 async def set_volume(request: VolumeRequest, authorization: str = Header(...)):
-    """Set playback volume"""
+    """Set playback volume (LEGACY)"""
     try:
         access_token = authorization.replace("Bearer ", "")
         success = await spotify_service.set_volume(
@@ -204,119 +356,6 @@ async def set_volume(request: VolumeRequest, authorization: str = Header(...)):
             raise HTTPException(status_code=400, detail="Failed to set volume")
 
         return {"message": f"Volume set to {request.volume_percent}%"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ==================== ROOM SYNC ====================
-
-@router.post("/room/{room_code}/play-next")
-async def play_next_in_queue(room_code: str, authorization: str = Header(...)):
-    """
-    Play the next song in the room queue for all members.
-    This syncs playback across all users in the room.
-    """
-    try:
-        access_token = authorization.replace("Bearer ", "")
-
-        # Get room
-        room = await supabase_service.get_room_by_code(room_code)
-        if not room.data:
-            raise HTTPException(status_code=404, detail="Room not found")
-
-        # Get queue
-        queue = await supabase_service.get_room_queue(room.data["id"])
-        if not queue.data:
-            raise HTTPException(status_code=404, detail="Queue is empty")
-
-        next_song = queue.data[0]
-        track_uri = f"spotify:track:{next_song['spotify_track_id']}"
-
-        # Get all room members
-        members = await supabase_service.get_room_members(room.data["id"])
-
-        # Start playback for all members
-        errors = []
-        for member in members.data:
-            user_data = member.get("users")
-            if user_data and user_data.get("access_token"):
-                try:
-                    await spotify_service.start_playback(
-                        user_data["access_token"],
-                        track_uris=[track_uri]
-                    )
-                except Exception as e:
-                    errors.append(f"User {user_data.get('display_name', 'Unknown')}: {str(e)}")
-
-        # Mark song as played
-        await supabase_service.mark_song_played(next_song["id"])
-
-        return {
-            "message": "Playing next song",
-            "now_playing": next_song,
-            "errors": errors if errors else None
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/room/{room_code}/sync")
-async def sync_room_playback(room_code: str, authorization: str = Header(...)):
-    """
-    Sync all room members to the host's current playback position.
-    """
-    try:
-        access_token = authorization.replace("Bearer ", "")
-
-        # Get room
-        room = await supabase_service.get_room_by_code(room_code)
-        if not room.data:
-            raise HTTPException(status_code=404, detail="Room not found")
-
-        # Get host's current playback
-        host = await supabase_service.get_user_by_id(room.data["host_id"])
-        if not host.data:
-            raise HTTPException(status_code=404, detail="Host not found")
-
-        host_playback = await spotify_service.get_playback_state(host.data["access_token"])
-        if not host_playback or not host_playback.get("item"):
-            raise HTTPException(status_code=400, detail="Host is not playing anything")
-
-        track_uri = host_playback["item"]["uri"]
-        position_ms = host_playback["progress_ms"]
-        is_playing = host_playback["is_playing"]
-
-        # Get all room members (except host)
-        members = await supabase_service.get_room_members(room.data["id"])
-
-        errors = []
-        for member in members.data:
-            user_data = member.get("users")
-            if user_data and user_data["id"] != room.data["host_id"] and user_data.get("access_token"):
-                try:
-                    # Start same track at same position
-                    await spotify_service.start_playback(
-                        user_data["access_token"],
-                        track_uris=[track_uri],
-                        position_ms=position_ms
-                    )
-                    # If host is paused, pause member too
-                    if not is_playing:
-                        await spotify_service.pause_playback(user_data["access_token"])
-                except Exception as e:
-                    errors.append(f"User {user_data.get('display_name', 'Unknown')}: {str(e)}")
-
-        return {
-            "message": "Room synced",
-            "track": host_playback["item"]["name"],
-            "position_ms": position_ms,
-            "is_playing": is_playing,
-            "errors": errors if errors else None
-        }
     except HTTPException:
         raise
     except Exception as e:
