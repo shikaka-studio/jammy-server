@@ -36,15 +36,14 @@ class PlaybackManager:
             if not next_song.data:
                 await self.supabase_service.update_session_playback_state(
                     session_id=session_id,
-                    current_song=None,
+                    current_song_id=None,
                     current_song_start=None,
-                    paused_position_ms=None
+                    paused_position_ms=0
                 )
                 return {
                     "is_playing": False,
                     "current_track": None,
                     "position_ms": 0,
-                    "duration_ms": 0,
                     "playback_started_at": None,
                     "message": "Queue is empty"
                 }
@@ -75,10 +74,9 @@ class PlaybackManager:
         # Update database
         await self.supabase_service.update_session_playback_state(
             session_id=session_id,
-            current_song=song["id"],
+            current_song_id=song["id"],
             current_song_start=now.isoformat(),
-            current_song_duration_ms=song["duration_ms"],
-            paused_position_ms=None
+            paused_position_ms=0
         )
 
         # Cancel existing task
@@ -103,11 +101,13 @@ class PlaybackManager:
                     "is_playing": True,
                     "current_track": {
                         "id": song["id"],
-                        "name": song["track_name"],
-                        "artists": song["artist_name"],
-                        "album_image_url": song["album_image_url"],
+                        "title": song["title"],
+                        "artist": song["artist"],
+                        "album": song.get("album"),
+                        "album_art_url": song["album_art_url"],
                         "duration_ms": song["duration_ms"],
-                        "spotify_track_id": song["spotify_track_id"]
+                        "spotify_id": song["spotify_id"],
+                        "spotify_uri": song["spotify_uri"]
                     },
                     "position_ms": position_ms,
                     "duration_ms": song["duration_ms"],
@@ -120,14 +120,15 @@ class PlaybackManager:
             "is_playing": True,
             "current_track": {
                 "id": song["id"],
-                "name": song["track_name"],
-                "artists": song["artist_name"],
-                "album_image_url": song["album_image_url"],
+                "title": song["title"],
+                "artist": song["artist"],
+                "album": song.get("album"),
+                "album_art_url": song["album_art_url"],
                 "duration_ms": song["duration_ms"],
-                "spotify_track_id": song["spotify_track_id"]
+                "spotify_id": song["spotify_id"],
+                "spotify_uri": song["spotify_uri"]
             },
             "position_ms": position_ms,
-            "duration_ms": song["duration_ms"],
             "playback_started_at": now.isoformat()
         }
 
@@ -197,7 +198,7 @@ class PlaybackManager:
             return await self.get_playback_state(session_id)
 
         current_position_ms = session_data.get("paused_position_ms", 0)
-        current_song_id = session_data.get("current_song")
+        current_song_id = session_data.get("current_song_id")
 
         if not current_song_id:
             return await self.start_playback(session_id)
@@ -231,11 +232,11 @@ class PlaybackManager:
             await self.supabase_service.mark_session_song_played(state["session_song_id"])
         else:
             session = await self.supabase_service.get_session_by_id(session_id)
-            if session.data and session.data.get("current_song"):
+            if session.data and session.data.get("current_song_id"):
                 # Find current session_song
                 queue = await self.supabase_service.get_session_queue(session_id)
                 for session_song in queue.data:
-                    if session_song["song"]["id"] == session.data["current_song"]:
+                    if session_song["song"]["id"] == session.data["current_song_id"]:
                         await self.supabase_service.mark_session_song_played(session_song["id"])
                         break
 
@@ -260,23 +261,21 @@ class PlaybackManager:
             session_data = session.data
             is_playing = bool(session_data.get("current_song_start"))
 
-            if not is_playing or not session_data.get("current_song"):
+            if not is_playing or not session_data.get("current_song_id"):
                 return {
                     "is_playing": False,
                     "current_track": None,
                     "position_ms": 0,
-                    "duration_ms": 0,
                     "playback_started_at": None
                 }
 
             # Get song data
-            song_result = await self.supabase_service.get_song_by_spotify_id(session_data["current_song"])
+            song_result = await self.supabase_service.get_song_by_id(session_data["current_song_id"])
             if not song_result.data:
                 return {
                     "is_playing": False,
                     "current_track": None,
                     "position_ms": 0,
-                    "duration_ms": 0,
                     "playback_started_at": None
                 }
 
@@ -302,18 +301,19 @@ class PlaybackManager:
             song = state["song"]
             current_track = {
                 "id": song["id"],
-                "name": song["track_name"],
-                "artists": song["artist_name"],
-                "album_image_url": song["album_image_url"],
+                "title": song["title"],
+                "artist": song["artist"],
+                "album": song.get("album"),
+                "album_art_url": song["album_art_url"],
                 "duration_ms": song["duration_ms"],
-                "spotify_track_id": song["spotify_track_id"]
+                "spotify_id": song["spotify_id"],
+                "spotify_uri": song["spotify_uri"]
             }
 
         return {
             "is_playing": state["is_playing"],
             "current_track": current_track,
             "position_ms": current_position,
-            "duration_ms": state["song"]["duration_ms"] if state.get("song") else 0,
             "playback_started_at": state["started_at"].isoformat() if state.get("started_at") else None
         }
 
@@ -329,7 +329,7 @@ class PlaybackManager:
         session_data = session.data
 
         # Auto-start if not playing and no current song
-        if not session_data.get("current_song_start") and not session_data.get("current_song"):
+        if not session_data.get("current_song_start") and not session_data.get("current_song_id"):
             await self.start_playback(session_id)
 
     async def restore_from_database(self, session_id: str) -> None:
@@ -344,7 +344,7 @@ class PlaybackManager:
         session_data = session.data
 
         # Get song data
-        song_result = await self.supabase_service.get_song_by_spotify_id(session_data["current_song"])
+        song_result = await self.supabase_service.get_song_by_id(session_data["current_song_id"])
         if not song_result.data:
             return
 
@@ -357,7 +357,7 @@ class PlaybackManager:
         queue = await self.supabase_service.get_session_queue(session_id)
         current_session_song = None
         for ss in queue.data:
-            if ss["song"]["id"] == session_data["current_song"]:
+            if ss["song"]["id"] == session_data["current_song_id"]:
                 current_session_song = ss
                 break
 
@@ -420,7 +420,7 @@ class PlaybackManager:
         if next_song.data:
             session_song = next_song.data[0]
             song = session_song["song"]
-            print(f"[PlaybackManager] Playing next song: {song['track_name']}")
+            print(f"[PlaybackManager] Playing next song: {song['title']}")
 
             result = await self.start_playback(
                 session_id=session_id,
@@ -438,12 +438,19 @@ class PlaybackManager:
                         "queue": [
                             {
                                 "id": s["id"],
-                                "song_id": s["song"]["id"],
-                                "name": s["song"]["track_name"],
-                                "artists": s["song"]["artist_name"],
-                                "album_image_url": s["song"]["album_image_url"],
+                                "title": s["song"]["title"],
+                                "artist": s["song"]["artist"],
+                                "album": s["song"].get("album"),
+                                "album_art_url": s["song"]["album_art_url"],
                                 "duration_ms": s["song"]["duration_ms"],
-                                "spotify_track_id": s["song"]["spotify_track_id"]
+                                "spotify_id": s["song"]["spotify_id"],
+                                "spotify_uri": s["song"]["spotify_uri"],
+                                "added_by": {
+                                    "id": s["user"]["id"],
+                                    "spotify_id": s["user"]["spotify_id"],
+                                    "display_name": s["user"]["display_name"],
+                                    "profile_image_url": s["user"]["profile_image_url"]
+                                } if s.get("user") else None
                             }
                             for s in remaining_queue.data
                         ] if remaining_queue.data else []
@@ -457,9 +464,9 @@ class PlaybackManager:
 
             await self.supabase_service.update_session_playback_state(
                 session_id=session_id,
-                current_song=None,
+                current_song_id=None,
                 current_song_start=None,
-                paused_position_ms=None
+                paused_position_ms=0
             )
 
             if session_id in self.session_playback_state:
@@ -474,7 +481,6 @@ class PlaybackManager:
                         "is_playing": False,
                         "current_track": None,
                         "position_ms": 0,
-                        "duration_ms": 0,
                         "playback_started_at": None
                     }
                 }
@@ -495,7 +501,6 @@ class PlaybackManager:
                 "is_playing": False,
                 "current_track": None,
                 "position_ms": 0,
-                "duration_ms": 0,
                 "playback_started_at": None,
                 "message": "Queue is empty"
             }

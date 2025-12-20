@@ -6,10 +6,10 @@ router = APIRouter()
 supabase_service = SupabaseService()
 
 
-@router.websocket("/ws/{room_code}")
+@router.websocket("/ws/{code}")
 async def websocket_endpoint(
     websocket: WebSocket,
-    room_code: str,
+    code: str,
     user_id: str = Query(...)
 ):
     """
@@ -23,12 +23,12 @@ async def websocket_endpoint(
 
     Args:
         websocket: WebSocket connection
-        room_code: Room code to join
+        code: Room code to join
         user_id: User ID (from query param)
     """
     # Verify room exists
     try:
-        room = await supabase_service.get_room_by_code(room_code)
+        room = await supabase_service.get_room_by_code(code)
         if not room.data:
             await websocket.close(code=1008, reason="Room not found")
             return
@@ -55,7 +55,7 @@ async def websocket_endpoint(
                 "type": "connected",
                 "data": {
                     "room_id": room_id,
-                    "room_code": room_code,
+                    "code": code,
                     "message": "Connected to room",
                     "user": user_data
                 }
@@ -89,7 +89,7 @@ async def websocket_endpoint(
                     )
 
         except WebSocketDisconnect:
-            print(f"[WebSocket] Client disconnected from room {room_code}")
+            print(f"[WebSocket] Client disconnected from room {code}")
 
     except Exception as e:
         print(f"[WebSocket] Error: {e}")

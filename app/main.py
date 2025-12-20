@@ -18,7 +18,7 @@ async def lifespan(app: FastAPI):
         supabase_service = SupabaseService()
 
         # Get all active sessions
-        sessions_result = supabase_service.client.table("session").select("*").eq("is_active", True).execute()
+        sessions_result = await supabase_service.get_all_active_sessions()
 
         for session in sessions_result.data:
             # Only restore if session has a current song playing

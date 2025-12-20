@@ -208,3 +208,6 @@ __marimo__/
 
 # Scripts
 dev.bat
+
+# Ignore claude.ai local files
+.claude/

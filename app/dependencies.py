@@ -41,14 +41,14 @@ async def get_current_user(
 
 
 async def verify_room_host(
-    room_code: str,
+    code: str,
     current_user: dict = Depends(get_current_user)
 ) -> dict:
     """
     Verify that the current user is the host of the specified room.
 
     Args:
-        room_code: The room code to verify
+        code: The room code to verify
         current_user: Current authenticated user (from get_current_user dependency)
 
     Returns:
@@ -59,7 +59,7 @@ async def verify_room_host(
         HTTPException(403): User is not the host
     """
     try:
-        room = await supabase_service.get_room_by_code(room_code)
+        room = await supabase_service.get_room_by_code(code)
 
         if not room.data:
             raise HTTPException(

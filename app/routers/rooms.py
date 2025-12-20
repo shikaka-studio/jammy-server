@@ -1,21 +1,11 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, File, UploadFile
 from app.services.supabase_service import SupabaseService
+from app.schemas.room import CreateRoomRequest, JoinRoomRequest, UploadCoverImageResponse
 import secrets
 import string
 
 router = APIRouter()
 supabase_service = SupabaseService()
-
-
-class CreateRoomRequest(BaseModel):
-    name: str
-    host_spotify_id: str
-
-
-class JoinRoomRequest(BaseModel):
-    room_code: str
-    user_spotify_id: str
 
 
 def generate_room_code(length: int = 6) -> str:
@@ -33,9 +23,11 @@ async def get_all_rooms():
         rooms_with_members = []
         for room in result.data:
             members = await supabase_service.get_room_members(room["id"])
+            # Extract only user data, not room_member metadata
+            user_list = [member["user"] for member in members.data]
             rooms_with_members.append({
                 **room,
-                "members": members.data
+                "members": user_list
             })
 
         return rooms_with_members
@@ -43,11 +35,53 @@ async def get_all_rooms():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/upload/cover", response_model=UploadCoverImageResponse)
+async def upload_cover_image(file: UploadFile = File(...)):
+    """
+    Upload a cover image for a room.
+    Accepts: JPEG, PNG, WebP
+    Max size: 5MB
+    Returns the public URL of the uploaded image.
+    """
+    # Validate file type
+    allowed_types = ["image/jpeg", "image/png", "image/webp"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type. Allowed types: {', '.join(allowed_types)}"
+        )
+
+    # Validate file size (5MB max)
+    max_size = 5 * 1024 * 1024  # 5MB in bytes
+    file_data = await file.read()
+
+    if len(file_data) > max_size:
+        raise HTTPException(
+            status_code=400,
+            detail="File too large. Maximum size is 5MB"
+        )
+
+    try:
+        # Upload to Supabase Storage
+        public_url = await supabase_service.upload_room_cover_image(
+            file_data=file_data,
+            file_name=file.filename or "cover.jpg",
+            content_type=file.content_type
+        )
+
+        return {
+            "url": public_url,
+            "message": "Cover image uploaded successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+
 @router.post("/create")
 async def create_room(request: CreateRoomRequest):
     """Create a new listening room"""
     try:
-        room_code = generate_room_code()
+        code = generate_room_code()
 
         # Get user to get their ID
         user = await supabase_service.get_user_by_spotify_id(request.host_spotify_id)
@@ -57,16 +91,16 @@ async def create_room(request: CreateRoomRequest):
         result = await supabase_service.create_room(
             name=request.name,
             host_id=user.data["id"],
-            room_code=room_code
+            code=code,
+            description=request.description,
+            cover_image_url=request.cover_image_url,
+            tags=request.tags
         )
 
         # Host automatically joins the room
         await supabase_service.join_room(result.data[0]["id"], user.data["id"])
 
-        return {
-            "room": result.data[0],
-            "room_code": room_code
-        }
+        return result.data[0]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -76,7 +110,7 @@ async def join_room(request: JoinRoomRequest):
     """Join an existing room"""
     try:
         # Find room by code
-        room = await supabase_service.get_room_by_code(request.room_code)
+        room = await supabase_service.get_room_by_code(request.code)
         if not room.data:
             raise HTTPException(status_code=404, detail="Room not found or inactive")
 
@@ -95,19 +129,21 @@ async def join_room(request: JoinRoomRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{room_code}")
-async def get_room(room_code: str):
+@router.get("/{code}")
+async def get_room(code: str):
     """Get room details with members"""
     try:
-        room = await supabase_service.get_room_by_code(room_code)
+        room = await supabase_service.get_room_by_code(code)
         if not room.data:
             raise HTTPException(status_code=404, detail="Room not found")
 
         members = await supabase_service.get_room_members(room.data["id"])
+        # Extract only user data, not room_member metadata
+        user_list = [member["user"] for member in members.data]
 
         return {
             **room.data,
-            "members": members.data
+            "members": user_list
         }
     except HTTPException:
         raise
@@ -115,11 +151,11 @@ async def get_room(room_code: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{room_code}/leave")
-async def leave_room(room_code: str, user_spotify_id: str):
+@router.post("/{code}/leave")
+async def leave_room(code: str, user_spotify_id: str):
     """Leave a room"""
     try:
-        room = await supabase_service.get_room_by_code(room_code)
+        room = await supabase_service.get_room_by_code(code)
         if not room.data:
             raise HTTPException(status_code=404, detail="Room not found")
 
@@ -136,11 +172,11 @@ async def leave_room(room_code: str, user_spotify_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/{room_code}")
-async def close_room(room_code: str, host_spotify_id: str):
+@router.delete("/{code}")
+async def close_room(code: str, host_spotify_id: str):
     """Close a room (host only)"""
     try:
-        room = await supabase_service.get_room_by_code(room_code)
+        room = await supabase_service.get_room_by_code(code)
         if not room.data:
             raise HTTPException(status_code=404, detail="Room not found")
 
