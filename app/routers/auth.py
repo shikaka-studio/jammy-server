@@ -107,7 +107,10 @@ async def refresh_spotify_token(current_user: dict = Depends(get_current_user)):
             new_refresh_token
         )
 
-        return {"message": "Spotify token refreshed successfully"}
+        return {
+            "message": "Spotify token refreshed successfully",
+            "access_token": new_access_token
+        }
 
     except HTTPException:
         raise

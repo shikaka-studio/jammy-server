@@ -38,6 +38,16 @@ async def websocket_endpoint(
         # Connect to WebSocket manager
         await websocket_manager.connect(websocket, room_id)
 
+        # Get user details for broadcast
+        user = await supabase_service.get_user_by_id(user_id)
+        user_data = None
+        if user.data:
+            user_data = {
+                "user_id": user_id,
+                "display_name": user.data.get("display_name", "Unknown"),
+                "profile_image_url": user.data.get("profile_image_url")
+            }
+
         # Send welcome message
         await websocket_manager.send_personal_message(
             websocket,
@@ -46,7 +56,8 @@ async def websocket_endpoint(
                 "data": {
                     "room_id": room_id,
                     "room_code": room_code,
-                    "message": "Connected to room"
+                    "message": "Connected to room",
+                    "user": user_data
                 }
             }
         )
@@ -57,7 +68,7 @@ async def websocket_endpoint(
             {
                 "type": "member_joined",
                 "data": {
-                    "user_id": user_id,
+                    **user_data,
                     "connection_count": websocket_manager.get_room_connection_count(room_id)
                 }
             }
@@ -91,14 +102,15 @@ async def websocket_endpoint(
         # Clean up connection
         websocket_manager.disconnect(websocket, room_id)
 
-        # Broadcast user left notification
-        await websocket_manager.broadcast_to_room(
-            room_id,
-            {
-                "type": "member_left",
-                "data": {
-                    "user_id": user_id,
-                    "connection_count": websocket_manager.get_room_connection_count(room_id)
+        # Broadcast user left notification (only if we have user data)
+        if user_data:
+            await websocket_manager.broadcast_to_room(
+                room_id,
+                {
+                    "type": "member_left",
+                    "data": {
+                        **user_data,
+                        "connection_count": websocket_manager.get_room_connection_count(room_id)
+                    }
                 }
-            }
-        )
+            )

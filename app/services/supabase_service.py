@@ -155,19 +155,28 @@ class SupabaseService:
         album_image_url: str | None = None,
         duration_ms: int | None = None
     ):
-        """Create a song in the song table or get existing one by spotify_track_id"""
+        """Create a song in the song table or get existing one by spotify_id"""
+        # Try to get existing song first
+        try:
+            existing = await self.get_song_by_spotify_id(spotify_track_id)
+            if existing.data:
+                return existing
+        except Exception:
+            pass
+
+        # Song doesn't exist, create it
         data = {
-            "spotify_track_id": spotify_track_id,
-            "track_name": track_name,
+            "spotify_id": spotify_track_id,
+            "name": track_name,
             "artist_name": artist_name,
             "album_image_url": album_image_url,
             "duration_ms": duration_ms
         }
-        return self.client.table("song").upsert(data, on_conflict="spotify_track_id").execute()
+        return self.client.table("song").insert(data).execute()
 
     async def get_song_by_spotify_id(self, spotify_track_id: str):
-        """Get a song from the song table by Spotify track ID"""
-        return self.client.table("song").select("*").eq("spotify_track_id", spotify_track_id).single().execute()
+        """Get a song from the song table by Spotify ID"""
+        return self.client.table("song").select("*").eq("spotify_id", spotify_track_id).single().execute()
 
     # ==================== SESSION SONG OPERATIONS (session_song table) ====================
 

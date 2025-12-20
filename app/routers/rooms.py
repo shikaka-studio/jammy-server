@@ -97,7 +97,7 @@ async def join_room(request: JoinRoomRequest):
 
 @router.get("/{room_code}")
 async def get_room(room_code: str):
-    """Get room details"""
+    """Get room details with members"""
     try:
         room = await supabase_service.get_room_by_code(room_code)
         if not room.data:
@@ -106,7 +106,7 @@ async def get_room(room_code: str):
         members = await supabase_service.get_room_members(room.data["id"])
 
         return {
-            "room": room.data,
+            **room.data,
             "members": members.data
         }
     except HTTPException:

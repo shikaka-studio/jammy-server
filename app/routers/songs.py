@@ -143,11 +143,11 @@ async def add_song_to_queue(request: AddSongRequest):
                         {
                             "id": s["id"],
                             "song_id": s["song"]["id"],
-                            "name": s["song"]["track_name"],
+                            "name": s["song"]["name"],
                             "artists": s["song"]["artist_name"],
                             "album_image_url": s["song"]["album_image_url"],
                             "duration_ms": s["song"]["duration_ms"],
-                            "spotify_track_id": s["song"]["spotify_track_id"]
+                            "spotify_id": s["song"]["spotify_id"]
                         }
                         for s in queue.data
                     ]
@@ -191,11 +191,11 @@ async def get_queue(room_code: str):
             {
                 "id": s["id"],
                 "song_id": s["song"]["id"],
-                "name": s["song"]["track_name"],
+                "name": s["song"]["name"],
                 "artists": s["song"]["artist_name"],
                 "album_image_url": s["song"]["album_image_url"],
                 "duration_ms": s["song"]["duration_ms"],
-                "spotify_track_id": s["song"]["spotify_track_id"],
+                "spotify_id": s["song"]["spotify_id"],
                 "added_by": {
                     "display_name": s["user"]["display_name"],
                     "profile_image_url": s["user"]["profile_image_url"]
@@ -240,11 +240,11 @@ async def remove_song(session_song_id: str):
                                 {
                                     "id": s["id"],
                                     "song_id": s["song"]["id"],
-                                    "name": s["song"]["track_name"],
+                                    "name": s["song"]["name"],
                                     "artists": s["song"]["artist_name"],
                                     "album_image_url": s["song"]["album_image_url"],
                                     "duration_ms": s["song"]["duration_ms"],
-                                    "spotify_track_id": s["song"]["spotify_track_id"]
+                                    "spotify_id": s["song"]["spotify_id"]
                                 }
                                 for s in queue.data
                             ] if queue.data else []
