@@ -110,7 +110,6 @@ class PlaybackManager:
                         "spotify_uri": song["spotify_uri"]
                     },
                     "position_ms": position_ms,
-                    "duration_ms": song["duration_ms"],
                     "playback_started_at": now.isoformat()
                 }
             }
@@ -430,6 +429,8 @@ class PlaybackManager:
 
             # Broadcast queue update
             remaining_queue = await self.supabase_service.get_session_queue(session_id)
+            recently_played = await self.supabase_service.get_recently_played_songs(session_id)
+
             await websocket_manager.broadcast_to_room(
                 room_id,
                 {
@@ -453,7 +454,27 @@ class PlaybackManager:
                                 } if s.get("user") else None
                             }
                             for s in remaining_queue.data
-                        ] if remaining_queue.data else []
+                        ] if remaining_queue.data else [],
+                        "recently_played": [
+                            {
+                                "id": s["id"],
+                                "title": s["song"]["title"],
+                                "artist": s["song"]["artist"],
+                                "album": s["song"].get("album"),
+                                "album_art_url": s["song"]["album_art_url"],
+                                "duration_ms": s["song"]["duration_ms"],
+                                "spotify_id": s["song"]["spotify_id"],
+                                "spotify_uri": s["song"]["spotify_uri"],
+                                "played_at": s.get("played_at"),
+                                "added_by": {
+                                    "id": s["user"]["id"],
+                                    "spotify_id": s["user"]["spotify_id"],
+                                    "display_name": s["user"]["display_name"],
+                                    "profile_image_url": s["user"]["profile_image_url"]
+                                } if s.get("user") else None
+                            }
+                            for s in recently_played.data
+                        ] if recently_played.data else []
                     }
                 }
             )

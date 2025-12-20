@@ -64,6 +64,8 @@ async def add_song_to_queue(request: AddSongRequest):
 
         # Broadcast queue update to all clients
         queue = await supabase_service.get_session_queue(session_id)
+        recently_played = await supabase_service.get_recently_played_songs(session_id)
+
         await websocket_manager.broadcast_to_room(
             room_id,
             {
@@ -87,7 +89,27 @@ async def add_song_to_queue(request: AddSongRequest):
                             } if s.get("user") else None
                         }
                         for s in queue.data
-                    ]
+                    ],
+                    "recently_played": [
+                        {
+                            "id": s["id"],
+                            "title": s["song"]["title"],
+                            "artist": s["song"]["artist"],
+                            "album": s["song"].get("album"),
+                            "album_art_url": s["song"]["album_art_url"],
+                            "duration_ms": s["song"]["duration_ms"],
+                            "spotify_id": s["song"]["spotify_id"],
+                            "spotify_uri": s["song"]["spotify_uri"],
+                            "played_at": s.get("played_at"),
+                            "added_by": {
+                                "id": s["user"]["id"],
+                                "spotify_id": s["user"]["spotify_id"],
+                                "display_name": s["user"]["display_name"],
+                                "profile_image_url": s["user"]["profile_image_url"]
+                            } if s.get("user") else None
+                        }
+                        for s in recently_played.data
+                    ] if recently_played.data else []
                 }
             }
         )
@@ -169,6 +191,8 @@ async def remove_song(session_song_id: str):
             # Broadcast queue update
             if room_id:
                 queue = await supabase_service.get_session_queue(session_id)
+                recently_played = await supabase_service.get_recently_played_songs(session_id)
+
                 await websocket_manager.broadcast_to_room(
                     room_id,
                     {
@@ -192,7 +216,27 @@ async def remove_song(session_song_id: str):
                                     } if s.get("user") else None
                                 }
                                 for s in queue.data
-                            ] if queue.data else []
+                            ] if queue.data else [],
+                            "recently_played": [
+                                {
+                                    "id": s["id"],
+                                    "title": s["song"]["title"],
+                                    "artist": s["song"]["artist"],
+                                    "album": s["song"].get("album"),
+                                    "album_art_url": s["song"]["album_art_url"],
+                                    "duration_ms": s["song"]["duration_ms"],
+                                    "spotify_id": s["song"]["spotify_id"],
+                                    "spotify_uri": s["song"]["spotify_uri"],
+                                    "played_at": s.get("played_at"),
+                                    "added_by": {
+                                        "id": s["user"]["id"],
+                                        "spotify_id": s["user"]["spotify_id"],
+                                        "display_name": s["user"]["display_name"],
+                                        "profile_image_url": s["user"]["profile_image_url"]
+                                    } if s.get("user") else None
+                                }
+                                for s in recently_played.data
+                            ] if recently_played.data else []
                         }
                     }
                 )

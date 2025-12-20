@@ -271,6 +271,17 @@ class SupabaseService:
             .execute()
         )
 
+    async def get_recently_played_songs(self, session_id: str):
+        """Get recently played songs in session, ordered by played_at (most recent first)"""
+        return (
+            self.client.table("session_song")
+            .select("*, song:song_id(*), user:added_by_user_id(id, spotify_id, display_name, profile_image_url)")
+            .eq("session_id", session_id)
+            .eq("played", True)
+            .order("played_at", desc=True)
+            .execute()
+        )
+
     async def get_next_session_song(self, session_id: str):
         """Get the next unplayed song in session queue"""
         return (

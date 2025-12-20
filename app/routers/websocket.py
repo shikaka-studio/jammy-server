@@ -62,6 +62,79 @@ async def websocket_endpoint(
             }
         )
 
+        # Send current queue and playback state to the newly connected client
+        try:
+            session = await supabase_service.get_active_session(room_id)
+            if session.data:
+                session_id = session.data["id"]
+
+                # Send queue state
+                queue = await supabase_service.get_session_queue(session_id)
+                recently_played = await supabase_service.get_recently_played_songs(session_id)
+
+                await websocket_manager.send_personal_message(
+                    websocket,
+                    {
+                        "type": "queue_update",
+                        "data": {
+                            "queue": [
+                                {
+                                    "id": s["id"],
+                                    "title": s["song"]["title"],
+                                    "artist": s["song"]["artist"],
+                                    "album": s["song"].get("album"),
+                                    "album_art_url": s["song"]["album_art_url"],
+                                    "duration_ms": s["song"]["duration_ms"],
+                                    "spotify_id": s["song"]["spotify_id"],
+                                    "spotify_uri": s["song"]["spotify_uri"],
+                                    "added_by": {
+                                        "id": s["user"]["id"],
+                                        "spotify_id": s["user"]["spotify_id"],
+                                        "display_name": s["user"]["display_name"],
+                                        "profile_image_url": s["user"]["profile_image_url"]
+                                    } if s.get("user") else None
+                                }
+                                for s in queue.data
+                            ] if queue.data else [],
+                            "recently_played": [
+                                {
+                                    "id": s["id"],
+                                    "title": s["song"]["title"],
+                                    "artist": s["song"]["artist"],
+                                    "album": s["song"].get("album"),
+                                    "album_art_url": s["song"]["album_art_url"],
+                                    "duration_ms": s["song"]["duration_ms"],
+                                    "spotify_id": s["song"]["spotify_id"],
+                                    "spotify_uri": s["song"]["spotify_uri"],
+                                    "played_at": s.get("played_at"),
+                                    "added_by": {
+                                        "id": s["user"]["id"],
+                                        "spotify_id": s["user"]["spotify_id"],
+                                        "display_name": s["user"]["display_name"],
+                                        "profile_image_url": s["user"]["profile_image_url"]
+                                    } if s.get("user") else None
+                                }
+                                for s in recently_played.data
+                            ] if recently_played.data else []
+                        }
+                    }
+                )
+
+                # Send playback state
+                from app.services.playback_manager import PlaybackManager
+                playback_manager = PlaybackManager()
+                playback_state = await playback_manager.get_playback_state(session_id)
+                await websocket_manager.send_personal_message(
+                    websocket,
+                    {
+                        "type": "playback_state",
+                        "data": playback_state
+                    }
+                )
+        except Exception as e:
+            # No active session or queue - that's okay, just skip
+            print(f"[WebSocket] No active session/queue for room {code}: {e}")
+
         # Broadcast user joined notification
         await websocket_manager.broadcast_to_room(
             room_id,
