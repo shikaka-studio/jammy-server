@@ -107,7 +107,8 @@ async def pause_room(
     """
     Pause playback in a room (host only).
     """
-    logger.info(f"Pause command for room: {code}")
+    room_name = room.get("name", code)
+    logger.info(f"Pause command for room {room_name} ({code})")
     try:
         # Get active session
         session = await supabase_service.get_active_session(room["id"])
@@ -117,7 +118,6 @@ async def pause_room(
 
         session_id = session.data["id"]
         state = await playback_manager.pause_playback(session_id)
-        logger.info(f"Playback paused for session: {session_id}")
         return state
     except HTTPException:
         raise
@@ -134,7 +134,8 @@ async def resume_room(
     """
     Resume paused playback in a room (host only).
     """
-    logger.info(f"Resume command for room: {code}")
+    room_name = room.get("name", code)
+    logger.info(f"Resume command for room {room_name} ({code})")
     try:
         # Get active session
         session = await supabase_service.get_active_session(room["id"])
@@ -144,7 +145,6 @@ async def resume_room(
 
         session_id = session.data["id"]
         state = await playback_manager.resume_playback(session_id)
-        logger.info(f"Playback resumed for session: {session_id}")
         return state
     except HTTPException:
         raise
@@ -171,7 +171,6 @@ async def skip_room(
 
         session_id = session.data["id"]
         state = await playback_manager.skip_to_next(session_id)
-        logger.info(f"Skipped to next song for session: {session_id}")
         return state
     except HTTPException:
         raise

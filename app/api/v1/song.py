@@ -13,7 +13,6 @@ supabase_service = SupabaseService()
 @router.post("/add")
 async def add_song_to_queue(request: AddSongRequest):
     """Add a song to the session queue"""
-    logger.info(f"Adding song to queue: {request.title} by {request.artist} in room {request.code}")
     try:
         # Get room
         room = await supabase_service.get_room_by_code(request.code)
@@ -22,6 +21,7 @@ async def add_song_to_queue(request: AddSongRequest):
             raise HTTPException(status_code=404, detail="Room not found")
 
         room_id = room.data["id"]
+        room_name = room.data.get("name", request.code)
 
         # Get user
         user = await supabase_service.get_user_by_spotify_id(request.user_spotify_id)
@@ -30,6 +30,8 @@ async def add_song_to_queue(request: AddSongRequest):
             raise HTTPException(status_code=404, detail="User not found")
 
         user_id = user.data["id"]
+        user_name = user.data.get("display_name", request.user_spotify_id)
+        logger.info(f"User {user_name} adding song '{request.title}' by {request.artist} to room {room_name} ({request.code})")
 
         # Get or create active session for the room
         try:

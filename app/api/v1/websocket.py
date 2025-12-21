@@ -41,17 +41,21 @@ async def websocket_endpoint(
 
         # Connect to WebSocket manager
         await websocket_manager.connect(websocket, room_id)
-        logger.info(f"User {user_id} connected to room {code} ({websocket_manager.get_room_connection_count(room_id)} total)")
 
         # Get user details for broadcast
         user = await supabase_service.get_user_by_id(user_id)
         user_data = None
+        display_name = "Unknown"
         if user.data:
+            display_name = user.data.get("display_name", "Unknown")
             user_data = {
                 "user_id": user_id,
-                "display_name": user.data.get("display_name", "Unknown"),
+                "display_name": display_name,
                 "profile_image_url": user.data.get("profile_image_url")
             }
+
+        room_name = room.data.get("name", code)
+        logger.info(f"User {display_name} ({user_id}) connected to room {room_name} ({code}) - {websocket_manager.get_room_connection_count(room_id)} total")
 
         # Send welcome message
         await websocket_manager.send_personal_message(
@@ -131,10 +135,10 @@ async def websocket_endpoint(
                     )
 
         except WebSocketDisconnect:
-            logger.info(f"User {user_id} disconnected from room {code}")
+            logger.info(f"User {display_name} ({user_id}) disconnected from room {room_name} ({code})")
 
     except Exception as e:
-        logger.error(f"WebSocket error for user {user_id} in room {code}: {e}", exc_info=True)
+        logger.error(f"WebSocket error for user {display_name} ({user_id}) in room {room_name} ({code}): {e}", exc_info=True)
         try:
             await websocket.close(code=1011, reason=str(e))
         except:
@@ -144,7 +148,7 @@ async def websocket_endpoint(
         # Clean up connection
         websocket_manager.disconnect(websocket, room_id)
         remaining = websocket_manager.get_room_connection_count(room_id)
-        logger.debug(f"User {user_id} cleaned up from room {code} ({remaining} remaining)")
+        logger.debug(f"User {display_name} ({user_id}) cleaned up from room {room_name} ({code}) - {remaining} remaining")
 
         # Broadcast user left notification (only if we have user data)
         if user_data:

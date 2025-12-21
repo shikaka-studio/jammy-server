@@ -123,7 +123,7 @@ async def create_room(request: CreateRoomRequest):
         # Host automatically joins the room
         await supabase_service.join_room(result.data[0]["id"], user.data["id"])
 
-        logger.info(f"Room created successfully: {code} (ID: {result.data[0]['id']})")
+        logger.info(f"Room created: {request.name} ({code}) by {user.data.get('display_name', request.host_spotify_id)}")
         return result.data[0]
     except Exception as e:
         logger.error(f"Failed to create room: {e}", exc_info=True)
@@ -133,7 +133,6 @@ async def create_room(request: CreateRoomRequest):
 @router.post("/join", response_model=JoinRoomResponse)
 async def join_room(request: JoinRoomRequest):
     """Join an existing room"""
-    logger.info(f"User {request.user_spotify_id} joining room: {request.code}")
     try:
         # Find room by code
         room = await supabase_service.get_room_by_code(request.code)
@@ -146,6 +145,10 @@ async def join_room(request: JoinRoomRequest):
         if not user.data:
             logger.warning(f"User not found: {request.user_spotify_id}")
             raise HTTPException(status_code=404, detail="User not found")
+
+        room_name = room.data.get("name", request.code)
+        user_name = user.data.get("display_name", request.user_spotify_id)
+        logger.info(f"User {user_name} joining room {room_name} ({request.code})")
 
         # Add user to room
         await supabase_service.join_room(room.data["id"], user.data["id"])
@@ -188,7 +191,6 @@ async def get_room(code: str):
 @router.post("/{code}/leave", response_model=LeaveRoomResponse)
 async def leave_room(code: str, user_spotify_id: str):
     """Leave a room"""
-    logger.info(f"User {user_spotify_id} leaving room: {code}")
     try:
         room = await supabase_service.get_room_by_code(code)
         if not room.data:
@@ -200,9 +202,12 @@ async def leave_room(code: str, user_spotify_id: str):
             logger.warning(f"User not found: {user_spotify_id}")
             raise HTTPException(status_code=404, detail="User not found")
 
+        room_name = room.data.get("name", code)
+        user_name = user.data.get("display_name", user_spotify_id)
+        logger.info(f"User {user_name} leaving room {room_name} ({code})")
+
         await supabase_service.leave_room(room.data["id"], user.data["id"])
 
-        logger.info(f"User {user_spotify_id} left room {code} successfully")
         return {"message": "Successfully left room"}
     except HTTPException:
         raise
@@ -214,7 +219,6 @@ async def leave_room(code: str, user_spotify_id: str):
 @router.delete("/{code}", response_model=CloseRoomResponse)
 async def close_room(code: str, host_spotify_id: str):
     """Close a room (host only)"""
-    logger.info(f"Closing room {code} by host {host_spotify_id}")
     try:
         room = await supabase_service.get_room_by_code(code)
         if not room.data:
@@ -226,22 +230,17 @@ async def close_room(code: str, host_spotify_id: str):
             logger.warning(f"User {host_spotify_id} is not the host of room {code}")
             raise HTTPException(status_code=403, detail="Only the host can close the room")
 
+        room_name = room.data.get("name", code)
+        host_name = user.data.get("display_name", host_spotify_id)
+        logger.info(f"Host {host_name} closing room {room_name} ({code})")
+
         await supabase_service.close_room(room.data["id"])
 
-        logger.info(f"Room {code} closed successfully")
         return {"message": "Room closed successfully"}
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to close room: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-        if not user.data or room.data["host_id"] != user.data["id"]:
-            raise HTTPException(status_code=403, detail="Only the host can close the room")
-
-        await supabase_service.close_room(room.data["id"])
-
-        return {"message": "Room closed successfully"}
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
