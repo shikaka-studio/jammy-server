@@ -50,7 +50,8 @@ async def add_song_to_queue(request: AddSongRequest):
             spotify_uri=request.spotify_uri,
             duration_ms=request.duration_ms
         )
-        song_id = song_result.data[0]["id"]
+        # Handle both .single() response (dict) and .insert() response (list)
+        song_id = song_result.data["id"] if isinstance(song_result.data, dict) else song_result.data[0]["id"]
 
         # Get next position for the queue
         position = await supabase_service.get_next_position_in_session(session_id)
