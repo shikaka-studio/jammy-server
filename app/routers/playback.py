@@ -3,6 +3,7 @@ from app.services.supabase_service import SupabaseService
 from app.services.playback_manager import PlaybackManager
 from app.dependencies import verify_room_host
 from app.utils.formatters import format_playback_state
+from app.schemas.playback import PlaybackStateResponse
 
 router = APIRouter()
 supabase_service = SupabaseService()
@@ -11,7 +12,7 @@ playback_manager = PlaybackManager()
 
 # ==================== ROOM PLAYBACK STATE ====================
 
-@router.get("/room/{code}/state")
+@router.get("/room/{code}/state", response_model=PlaybackStateResponse)
 async def get_room_playback_state(code: str):
     """
     Get current playback state for a room's active session.
@@ -29,7 +30,6 @@ async def get_room_playback_state(code: str):
             "spotify_track_id": str
         } | null,
         "position_ms": int,
-        "duration_ms": int,
         "playback_started_at": str | null
     }
     """
@@ -60,7 +60,7 @@ async def get_room_playback_state(code: str):
 
 # ==================== HOST CONTROLS ====================
 
-@router.post("/room/{code}/play")
+@router.post("/room/{code}/play", response_model=PlaybackStateResponse)
 async def play_room(
     code: str,
     room: dict = Depends(verify_room_host)
@@ -91,7 +91,7 @@ async def play_room(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/room/{code}/pause")
+@router.post("/room/{code}/pause", response_model=PlaybackStateResponse)
 async def pause_room(
     code: str,
     room: dict = Depends(verify_room_host)
@@ -114,7 +114,7 @@ async def pause_room(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/room/{code}/resume")
+@router.post("/room/{code}/resume", response_model=PlaybackStateResponse)
 async def resume_room(
     code: str,
     room: dict = Depends(verify_room_host)
@@ -137,7 +137,7 @@ async def resume_room(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/room/{code}/skip")
+@router.post("/room/{code}/skip", response_model=PlaybackStateResponse)
 async def skip_room(
     code: str,
     room: dict = Depends(verify_room_host)

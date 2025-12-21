@@ -5,6 +5,7 @@ from app.services.supabase_service import SupabaseService
 from app.services.jwt_service import create_access_token
 from app.dependencies import get_current_user
 from app.config import get_settings
+from app.schemas.auth import UserProfileResponse, RefreshTokenResponse, LogoutResponse
 import secrets
 
 router = APIRouter()
@@ -64,7 +65,7 @@ async def callback(code: str = Query(...), state: str = Query(None)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/me")
+@router.get("/me", response_model=UserProfileResponse)
 async def get_current_user_profile(current_user: dict = Depends(get_current_user)):
     """
     Get the current authenticated user's profile.
@@ -81,7 +82,7 @@ async def get_current_user_profile(current_user: dict = Depends(get_current_user
         "access_token": current_user["access_token"],
     }
 
-@router.post("/refresh")
+@router.post("/refresh", response_model=RefreshTokenResponse)
 async def refresh_spotify_token(current_user: dict = Depends(get_current_user)):
     """
     Refresh the user's Spotify access token.
@@ -117,7 +118,7 @@ async def refresh_spotify_token(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/logout")
+@router.post("/logout", response_model=LogoutResponse)
 async def logout(current_user: dict = Depends(get_current_user)):
     """
     Logout the user (optional: could invalidate tokens in DB).

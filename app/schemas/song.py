@@ -40,3 +40,8 @@ class AddSongResponse(BaseModel):
     """Response schema for adding a song"""
     session_song: dict
     message: str
+
+
+class RemoveSongResponse(BaseModel):
+    """Response schema for removing a song"""
+    message: str

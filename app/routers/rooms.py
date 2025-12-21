@@ -1,6 +1,15 @@
 from fastapi import APIRouter, HTTPException, File, UploadFile
 from app.services.supabase_service import SupabaseService
-from app.schemas.room import CreateRoomRequest, JoinRoomRequest, UploadCoverImageResponse
+from app.schemas.room import (
+    CreateRoomRequest, 
+    JoinRoomRequest, 
+    UploadCoverImageResponse,
+    RoomWithMembersResponse,
+    CreateRoomResponse,
+    JoinRoomResponse,
+    LeaveRoomResponse,
+    CloseRoomResponse
+)
 import secrets
 import string
 
@@ -14,7 +23,7 @@ def generate_room_code(length: int = 6) -> str:
     return ''.join(secrets.choice(characters) for _ in range(length))
 
 
-@router.get("")
+@router.get("", response_model=list[RoomWithMembersResponse])
 async def get_all_rooms():
     """Get all rooms with host and members info"""
     try:
@@ -77,7 +86,7 @@ async def upload_cover_image(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
-@router.post("/create")
+@router.post("/create", response_model=CreateRoomResponse)
 async def create_room(request: CreateRoomRequest):
     """Create a new listening room"""
     try:
@@ -105,7 +114,7 @@ async def create_room(request: CreateRoomRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/join")
+@router.post("/join", response_model=JoinRoomResponse)
 async def join_room(request: JoinRoomRequest):
     """Join an existing room"""
     try:
@@ -129,7 +138,7 @@ async def join_room(request: JoinRoomRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{code}")
+@router.get("/{code}", response_model=RoomWithMembersResponse)
 async def get_room(code: str):
     """Get room details with members"""
     try:
@@ -151,7 +160,7 @@ async def get_room(code: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{code}/leave")
+@router.post("/{code}/leave", response_model=LeaveRoomResponse)
 async def leave_room(code: str, user_spotify_id: str):
     """Leave a room"""
     try:
@@ -172,7 +181,7 @@ async def leave_room(code: str, user_spotify_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/{code}")
+@router.delete("/{code}", response_model=CloseRoomResponse)
 async def close_room(code: str, host_spotify_id: str):
     """Close a room (host only)"""
     try:

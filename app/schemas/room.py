@@ -70,3 +70,13 @@ class UploadCoverImageResponse(BaseModel):
     """Response schema for cover image upload"""
     url: str
     message: str
+
+
+class LeaveRoomResponse(BaseModel):
+    """Response schema for leaving a room"""
+    message: str
+
+
+class CloseRoomResponse(BaseModel):
+    """Response schema for closing a room"""
+    message: str

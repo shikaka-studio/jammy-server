@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from app.services.supabase_service import SupabaseService
 from app.services.websocket_manager import websocket_manager
-from app.schemas.song import AddSongRequest
+from app.schemas.song import AddSongRequest, QueueItemResponse, RemoveSongResponse
 from app.utils.formatters import format_queue_update, format_session_song
 
 router = APIRouter()
@@ -85,7 +85,7 @@ async def add_song_to_queue(request: AddSongRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/queue/{code}")
+@router.get("/queue/{code}", response_model=list[QueueItemResponse])
 async def get_queue(code: str):
     """Get the song queue for a room's active session"""
     try:
@@ -116,7 +116,7 @@ async def get_queue(code: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/{session_song_id}")
+@router.delete("/{session_song_id}", response_model=RemoveSongResponse)
 async def remove_song(session_song_id: str):
     """Remove a song from the session queue"""
     try:
