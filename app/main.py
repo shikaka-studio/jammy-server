@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
-from app.routers import auth, rooms, songs, playback, websocket
+from app.routers import auth, room, song, playback, websocket
 from app.services.playback_manager import PlaybackManager
 from app.services.supabase_service import SupabaseService
 
@@ -57,8 +57,8 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
-app.include_router(rooms.router, prefix="/rooms", tags=["Rooms"])
-app.include_router(songs.router, prefix="/songs", tags=["Songs"])
+app.include_router(room.router, prefix="/rooms", tags=["Rooms"])
+app.include_router(song.router, prefix="/songs", tags=["Songs"])
 app.include_router(playback.router, prefix="/playback", tags=["Playback"])
 app.include_router(websocket.router, tags=["WebSocket"])
 
