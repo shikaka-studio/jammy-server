@@ -1,6 +1,9 @@
 from typing import Dict, List
 from fastapi import WebSocket
+from app.core.logging import get_logger
 import json
+
+logger = get_logger("WebSocketManager")
 
 
 class WebSocketManager:
@@ -27,7 +30,6 @@ class WebSocketManager:
             self.active_connections[room_id] = []
 
         self.active_connections[room_id].append(websocket)
-        print(f"[WebSocket] Client connected to room {room_id} ({len(self.active_connections[room_id])} total)")
 
     def disconnect(self, websocket: WebSocket, room_id: str):
         """
@@ -40,12 +42,10 @@ class WebSocketManager:
         if room_id in self.active_connections:
             if websocket in self.active_connections[room_id]:
                 self.active_connections[room_id].remove(websocket)
-                print(f"[WebSocket] Client disconnected from room {room_id} ({len(self.active_connections[room_id])} remaining)")
 
             # Clean up empty room
             if not self.active_connections[room_id]:
                 del self.active_connections[room_id]
-                print(f"[WebSocket] Room {room_id} has no connections, removed")
 
     async def broadcast_to_room(self, room_id: str, message: dict):
         """
@@ -67,7 +67,7 @@ class WebSocketManager:
             try:
                 await connection.send_text(json_message)
             except Exception as e:
-                print(f"[WebSocket] Error sending message: {e}")
+                logger.warning(f"Failed to send {message.get('type')} to client in room {room_id}: {e}")
                 disconnected.append(connection)
 
         # Clean up disconnected clients
@@ -85,7 +85,7 @@ class WebSocketManager:
         try:
             await websocket.send_text(json.dumps(message))
         except Exception as e:
-            print(f"[WebSocket] Error sending personal message: {e}")
+            logger.error(f"Failed to send {message.get('type')} message: {e}", exc_info=True)
 
     def get_room_connection_count(self, room_id: str) -> int:
         """

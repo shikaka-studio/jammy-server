@@ -10,7 +10,7 @@ from app.services.supabase_service import SupabaseService
 
 # Configure logging before anything else
 setup_logging()
-logger = get_logger(__name__)
+logger = get_logger("App")
 
 settings = get_settings()
 playback_manager = PlaybackManager()

@@ -1,9 +1,12 @@
 import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional
+from app.core.logging import get_logger
 from app.services.supabase_service import SupabaseService
 from app.services.websocket_manager import websocket_manager
 from app.utils.formatters import format_song, format_playback_state, format_queue_update
+
+logger = get_logger("PlaybackManager")
 
 
 class PlaybackManager:
@@ -35,6 +38,7 @@ class PlaybackManager:
         if session_song_id is None:
             next_song = await self.supabase_service.get_next_session_song(session_id)
             if not next_song.data:
+                logger.warning(f"No songs in queue for session: {session_id}")
                 await self.supabase_service.update_session_playback_state(
                     session_id=session_id,
                     current_song_id=None,
@@ -50,9 +54,11 @@ class PlaybackManager:
             session_song = next_song.data[0]
             session_song_id = session_song["id"]
             song = session_song["song"]
+            logger.info(f"Now playing: {song['title']} by {song['artist']}")
         else:
             session_song_result = await self.supabase_service.get_session_song_by_id(session_song_id)
             if not session_song_result.data:
+                logger.error(f"Session song not found: {session_song_id}")
                 raise Exception("Session song not found")
             session_song = session_song_result.data[0]
             song = session_song["song"]
@@ -126,9 +132,11 @@ class PlaybackManager:
 
             if state["song"].get("duration_ms"):
                 current_position = min(current_position, state["song"]["duration_ms"])
+            logger.info(f"Paused at {current_position}ms")
         else:
             session = await self.supabase_service.get_session_by_id(session_id)
             if not session.data:
+                logger.error(f"Session not found: {session_id}")
                 raise Exception("Session not found")
             current_position = session.data.get("paused_position_ms", 0)
 

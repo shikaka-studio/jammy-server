@@ -1,8 +1,10 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from app.core.logging import get_logger
 from app.services.websocket_manager import websocket_manager
 from app.services.supabase_service import SupabaseService
 from app.utils.formatters import format_queue_update
 
+logger = get_logger("api.websocket")
 router = APIRouter()
 supabase_service = SupabaseService()
 
@@ -31,6 +33,7 @@ async def websocket_endpoint(
     try:
         room = await supabase_service.get_room_by_code(code)
         if not room.data:
+            logger.warning(f"WebSocket connection rejected: room {code} not found")
             await websocket.close(code=1008, reason="Room not found")
             return
 
@@ -38,6 +41,7 @@ async def websocket_endpoint(
 
         # Connect to WebSocket manager
         await websocket_manager.connect(websocket, room_id)
+        logger.info(f"User {user_id} connected to room {code} ({websocket_manager.get_room_connection_count(room_id)} total)")
 
         # Get user details for broadcast
         user = await supabase_service.get_user_by_id(user_id)
@@ -68,6 +72,7 @@ async def websocket_endpoint(
             session = await supabase_service.get_active_session(room_id)
             if session.data:
                 session_id = session.data["id"]
+                logger.debug(f"Sending initial state to user {user_id} for session {session_id}")
 
                 # Send queue state
                 queue = await supabase_service.get_session_queue(session_id)
@@ -97,7 +102,7 @@ async def websocket_endpoint(
                 )
         except Exception as e:
             # No active session or queue - that's okay, just skip
-            print(f"[WebSocket] No active session/queue for room {code}: {e}")
+            logger.debug(f"No active session/queue for room {code}: {e}")
 
         # Broadcast user joined notification
         await websocket_manager.broadcast_to_room(
@@ -126,10 +131,10 @@ async def websocket_endpoint(
                     )
 
         except WebSocketDisconnect:
-            print(f"[WebSocket] Client disconnected from room {code}")
+            logger.info(f"User {user_id} disconnected from room {code}")
 
     except Exception as e:
-        print(f"[WebSocket] Error: {e}")
+        logger.error(f"WebSocket error for user {user_id} in room {code}: {e}", exc_info=True)
         try:
             await websocket.close(code=1011, reason=str(e))
         except:
@@ -138,6 +143,8 @@ async def websocket_endpoint(
     finally:
         # Clean up connection
         websocket_manager.disconnect(websocket, room_id)
+        remaining = websocket_manager.get_room_connection_count(room_id)
+        logger.debug(f"User {user_id} cleaned up from room {code} ({remaining} remaining)")
 
         # Broadcast user left notification (only if we have user data)
         if user_data:

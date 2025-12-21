@@ -1,8 +1,10 @@
 import httpx
 import base64
 from urllib.parse import urlencode
+from app.core.logging import get_logger
 from app.config import get_settings
 
+logger = get_logger("SpotifyService")
 settings = get_settings()
 
 
@@ -58,9 +60,13 @@ class SpotifyService:
         }
 
         async with httpx.AsyncClient() as client:
-            response = await client.post(self.TOKEN_URL, headers=headers, data=data)
-            response.raise_for_status()
-            return response.json()
+            try:
+                response = await client.post(self.TOKEN_URL, headers=headers, data=data)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Token exchange failed: HTTP {e.response.status_code}", exc_info=True)
+                raise
 
     async def refresh_access_token(self, refresh_token: str) -> dict:
         """Refresh an expired access token"""
@@ -74,9 +80,13 @@ class SpotifyService:
         }
 
         async with httpx.AsyncClient() as client:
-            response = await client.post(self.TOKEN_URL, headers=headers, data=data)
-            response.raise_for_status()
-            return response.json()
+            try:
+                response = await client.post(self.TOKEN_URL, headers=headers, data=data)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Token refresh failed: HTTP {e.response.status_code}", exc_info=True)
+                raise
 
     # ==================== USER ====================
 
@@ -85,6 +95,10 @@ class SpotifyService:
         headers = {"Authorization": f"Bearer {access_token}"}
 
         async with httpx.AsyncClient() as client:
-            response = await client.get(f"{self.API_BASE_URL}/me", headers=headers)
-            response.raise_for_status()
-            return response.json()
+            try:
+                response = await client.get(f"{self.API_BASE_URL}/me", headers=headers)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Failed to fetch user profile: HTTP {e.response.status_code}", exc_info=True)
+                raise

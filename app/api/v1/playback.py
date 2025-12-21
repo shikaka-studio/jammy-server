@@ -1,10 +1,12 @@
 from fastapi import APIRouter, HTTPException, Depends
+from app.core.logging import get_logger
 from app.services.supabase_service import SupabaseService
 from app.services.playback_manager import PlaybackManager
 from app.dependencies import verify_room_host
 from app.utils.formatters import format_playback_state
 from app.schemas.playback import PlaybackStateResponse
 
+logger = get_logger("api.playback")
 router = APIRouter()
 supabase_service = SupabaseService()
 playback_manager = PlaybackManager()
@@ -33,9 +35,11 @@ async def get_room_playback_state(code: str):
         "playback_started_at": str | null
     }
     """
+    logger.debug(f"Fetching playback state for room: {code}")
     try:
         room = await supabase_service.get_room_by_code(code)
         if not room.data:
+            logger.warning(f"Room not found: {code}")
             raise HTTPException(status_code=404, detail="Room not found")
 
         # Get active session
@@ -46,6 +50,7 @@ async def get_room_playback_state(code: str):
             return state
         except Exception:
             # No active session, return empty state
+            logger.debug(f"No active session for room {code}, returning empty state")
             return format_playback_state(
                 is_playing=False,
                 current_track=None,
@@ -55,6 +60,7 @@ async def get_room_playback_state(code: str):
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Failed to fetch playback state: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -69,6 +75,7 @@ async def play_room(
     Start playback in a room (host only).
     If paused, resumes. If stopped, starts from beginning of queue.
     """
+    logger.info(f"Play command for room: {code}")
     try:
         # Get or create active session
         try:
@@ -88,6 +95,7 @@ async def play_room(
 
         return state
     except Exception as e:
+        logger.error(f"Failed to start playback: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -99,18 +107,22 @@ async def pause_room(
     """
     Pause playback in a room (host only).
     """
+    logger.info(f"Pause command for room: {code}")
     try:
         # Get active session
         session = await supabase_service.get_active_session(room["id"])
         if not session.data:
+            logger.warning(f"No active session for room: {code}")
             raise HTTPException(status_code=404, detail="No active session")
 
         session_id = session.data["id"]
         state = await playback_manager.pause_playback(session_id)
+        logger.info(f"Playback paused for session: {session_id}")
         return state
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Failed to pause playback: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -122,18 +134,22 @@ async def resume_room(
     """
     Resume paused playback in a room (host only).
     """
+    logger.info(f"Resume command for room: {code}")
     try:
         # Get active session
         session = await supabase_service.get_active_session(room["id"])
         if not session.data:
+            logger.warning(f"No active session for room: {code}")
             raise HTTPException(status_code=404, detail="No active session")
 
         session_id = session.data["id"]
         state = await playback_manager.resume_playback(session_id)
+        logger.info(f"Playback resumed for session: {session_id}")
         return state
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Failed to resume playback: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -145,16 +161,20 @@ async def skip_room(
     """
     Skip to next song in queue (host only).
     """
+    logger.info(f"Skip command for room: {code}")
     try:
         # Get active session
         session = await supabase_service.get_active_session(room["id"])
         if not session.data:
+            logger.warning(f"No active session for room: {code}")
             raise HTTPException(status_code=404, detail="No active session")
 
         session_id = session.data["id"]
         state = await playback_manager.skip_to_next(session_id)
+        logger.info(f"Skipped to next song for session: {session_id}")
         return state
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Failed to skip song: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

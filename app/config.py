@@ -26,11 +26,13 @@ class Settings(BaseSettings):
     # Security
     secret_key: str
 
-    # CORS
-    allowed_cors_origins: list[str] = [self.frontend_url, self.full_frontend_url]
-
     # Logging
     log_level: str = "INFO"
+
+    @property
+    def allowed_cors_origins(self) -> list[str]:
+        """CORS allowed origins"""
+        return [self.frontend_url, self.full_frontend_url]
 
     @property
     def is_development(self) -> bool:
