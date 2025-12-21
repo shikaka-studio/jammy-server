@@ -1,10 +1,16 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.config import get_settings
+
 from app.api.v1 import auth, room, song, playback, websocket
+from app.config import get_settings
+from app.core.logging import setup_logging, get_logger
 from app.services.playback_manager import PlaybackManager
 from app.services.supabase_service import SupabaseService
+
+# Configure logging before anything else
+setup_logging()
+logger = get_logger(__name__)
 
 settings = get_settings()
 playback_manager = PlaybackManager()
@@ -13,7 +19,7 @@ playback_manager = PlaybackManager()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Restore playback state from database
-    print("[Startup] Restoring playback state from database...")
+    logger.info("Application startup: Restoring playback state from database...")
     try:
         supabase_service = SupabaseService()
 
@@ -23,20 +29,20 @@ async def lifespan(app: FastAPI):
         for session in sessions_result.data:
             # Only restore if session has a current song playing
             if session.get('current_song_start'):
-                print(f"[Startup] Restoring playback for session {session['id']}")
+                logger.info(f"Restoring playback for session {session['id']}")
                 await playback_manager.restore_from_database(session['id'])
 
-        print("[Startup] Playback state restored successfully")
+        logger.info("Playback state restored successfully")
     except Exception as e:
-        print(f"[Startup] Error restoring playback state: {e}")
+        logger.error(f"Error restoring playback state: {e}", exc_info=True)
 
     yield
 
     # Shutdown: Cancel all session tasks
-    print("[Shutdown] Cancelling all playback tasks...")
+    logger.info("Application shutdown: Cancelling all playback tasks...")
     for session_id in list(playback_manager.session_tasks.keys()):
         await playback_manager._cancel_session_task(session_id)
-    print("[Shutdown] All tasks cancelled")
+    logger.info("All tasks cancelled successfully")
 
 
 app = FastAPI(
