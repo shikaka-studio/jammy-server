@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional
 from app.services.supabase_service import SupabaseService
 from app.services.websocket_manager import websocket_manager
+from app.utils.formatters import format_song, format_playback_state, format_queue_update
 
 
 class PlaybackManager:
@@ -40,13 +41,12 @@ class PlaybackManager:
                     current_song_start=None,
                     paused_position_ms=0
                 )
-                return {
-                    "is_playing": False,
-                    "current_track": None,
-                    "position_ms": 0,
-                    "playback_started_at": None,
-                    "message": "Queue is empty"
-                }
+                return format_playback_state(
+                    is_playing=False,
+                    current_track=None,
+                    position_ms=0,
+                    playback_started_at=None
+                )
             session_song = next_song.data[0]
             session_song_id = session_song["id"]
             song = session_song["song"]
@@ -97,39 +97,21 @@ class PlaybackManager:
             room_id,
             {
                 "type": "playback_state",
-                "data": {
-                    "is_playing": True,
-                    "current_track": {
-                        "id": song["id"],
-                        "title": song["title"],
-                        "artist": song["artist"],
-                        "album": song.get("album"),
-                        "album_art_url": song["album_art_url"],
-                        "duration_ms": song["duration_ms"],
-                        "spotify_id": song["spotify_id"],
-                        "spotify_uri": song["spotify_uri"]
-                    },
-                    "position_ms": position_ms,
-                    "playback_started_at": now.isoformat()
-                }
+                "data": format_playback_state(
+                    is_playing=True,
+                    current_track=song,
+                    position_ms=position_ms,
+                    playback_started_at=now.isoformat()
+                )
             }
         )
 
-        return {
-            "is_playing": True,
-            "current_track": {
-                "id": song["id"],
-                "title": song["title"],
-                "artist": song["artist"],
-                "album": song.get("album"),
-                "album_art_url": song["album_art_url"],
-                "duration_ms": song["duration_ms"],
-                "spotify_id": song["spotify_id"],
-                "spotify_uri": song["spotify_uri"]
-            },
-            "position_ms": position_ms,
-            "playback_started_at": now.isoformat()
-        }
+        return format_playback_state(
+            is_playing=True,
+            current_track=song,
+            position_ms=position_ms,
+            playback_started_at=now.isoformat()
+        )
 
     async def pause_playback(self, session_id: str) -> dict:
         """
@@ -261,22 +243,22 @@ class PlaybackManager:
             is_playing = bool(session_data.get("current_song_start"))
 
             if not is_playing or not session_data.get("current_song_id"):
-                return {
-                    "is_playing": False,
-                    "current_track": None,
-                    "position_ms": 0,
-                    "playback_started_at": None
-                }
+                return format_playback_state(
+                    is_playing=False,
+                    current_track=None,
+                    position_ms=0,
+                    playback_started_at=None
+                )
 
             # Get song data
             song_result = await self.supabase_service.get_song_by_id(session_data["current_song_id"])
             if not song_result.data:
-                return {
-                    "is_playing": False,
-                    "current_track": None,
-                    "position_ms": 0,
-                    "playback_started_at": None
-                }
+                return format_playback_state(
+                    is_playing=False,
+                    current_track=None,
+                    position_ms=0,
+                    playback_started_at=None
+                )
 
             song = song_result.data
             started_at = datetime.fromisoformat(session_data["current_song_start"].replace("Z", "+00:00"))
@@ -295,26 +277,12 @@ class PlaybackManager:
         else:
             current_position = state["position_ms"]
 
-        current_track = None
-        if state.get("song"):
-            song = state["song"]
-            current_track = {
-                "id": song["id"],
-                "title": song["title"],
-                "artist": song["artist"],
-                "album": song.get("album"),
-                "album_art_url": song["album_art_url"],
-                "duration_ms": song["duration_ms"],
-                "spotify_id": song["spotify_id"],
-                "spotify_uri": song["spotify_uri"]
-            }
-
-        return {
-            "is_playing": state["is_playing"],
-            "current_track": current_track,
-            "position_ms": current_position,
-            "playback_started_at": state["started_at"].isoformat() if state.get("started_at") else None
-        }
+        return format_playback_state(
+            is_playing=state["is_playing"],
+            current_track=state.get("song"),
+            position_ms=current_position,
+            playback_started_at=state["started_at"].isoformat() if state.get("started_at") else None
+        )
 
     async def handle_song_added(self, session_id: str) -> None:
         """
@@ -435,47 +403,10 @@ class PlaybackManager:
                 room_id,
                 {
                     "type": "queue_update",
-                    "data": {
-                        "queue": [
-                            {
-                                "id": s["id"],
-                                "title": s["song"]["title"],
-                                "artist": s["song"]["artist"],
-                                "album": s["song"].get("album"),
-                                "album_art_url": s["song"]["album_art_url"],
-                                "duration_ms": s["song"]["duration_ms"],
-                                "spotify_id": s["song"]["spotify_id"],
-                                "spotify_uri": s["song"]["spotify_uri"],
-                                "added_by": {
-                                    "id": s["user"]["id"],
-                                    "spotify_id": s["user"]["spotify_id"],
-                                    "display_name": s["user"]["display_name"],
-                                    "profile_image_url": s["user"]["profile_image_url"]
-                                } if s.get("user") else None
-                            }
-                            for s in remaining_queue.data
-                        ] if remaining_queue.data else [],
-                        "recently_played": [
-                            {
-                                "id": s["id"],
-                                "title": s["song"]["title"],
-                                "artist": s["song"]["artist"],
-                                "album": s["song"].get("album"),
-                                "album_art_url": s["song"]["album_art_url"],
-                                "duration_ms": s["song"]["duration_ms"],
-                                "spotify_id": s["song"]["spotify_id"],
-                                "spotify_uri": s["song"]["spotify_uri"],
-                                "played_at": s.get("played_at"),
-                                "added_by": {
-                                    "id": s["user"]["id"],
-                                    "spotify_id": s["user"]["spotify_id"],
-                                    "display_name": s["user"]["display_name"],
-                                    "profile_image_url": s["user"]["profile_image_url"]
-                                } if s.get("user") else None
-                            }
-                            for s in recently_played.data
-                        ] if recently_played.data else []
-                    }
+                    "data": format_queue_update(
+                        remaining_queue.data if remaining_queue.data else [],
+                        recently_played.data if recently_played.data else []
+                    )
                 }
             )
 
@@ -498,12 +429,12 @@ class PlaybackManager:
                 room_id,
                 {
                     "type": "playback_state",
-                    "data": {
-                        "is_playing": False,
-                        "current_track": None,
-                        "position_ms": 0,
-                        "playback_started_at": None
-                    }
+                    "data": format_playback_state(
+                        is_playing=False,
+                        current_track=None,
+                        position_ms=0,
+                        playback_started_at=None
+                    )
                 }
             )
 
@@ -513,29 +444,10 @@ class PlaybackManager:
                 room_id,
                 {
                     "type": "queue_update",
-                    "data": {
-                        "queue": [],
-                        "recently_played": [
-                            {
-                                "id": s["id"],
-                                "title": s["song"]["title"],
-                                "artist": s["song"]["artist"],
-                                "album": s["song"].get("album"),
-                                "album_art_url": s["song"]["album_art_url"],
-                                "duration_ms": s["song"]["duration_ms"],
-                                "spotify_id": s["song"]["spotify_id"],
-                                "spotify_uri": s["song"]["spotify_uri"],
-                                "played_at": s.get("played_at"),
-                                "added_by": {
-                                    "id": s["user"]["id"],
-                                    "spotify_id": s["user"]["spotify_id"],
-                                    "display_name": s["user"]["display_name"],
-                                    "profile_image_url": s["user"]["profile_image_url"]
-                                } if s.get("user") else None
-                            }
-                            for s in recently_played.data
-                        ] if recently_played.data else []
-                    }
+                    "data": format_queue_update(
+                        [],
+                        recently_played.data if recently_played.data else []
+                    )
                 }
             )
 
@@ -550,13 +462,12 @@ class PlaybackManager:
                 }
             )
 
-            return {
-                "is_playing": False,
-                "current_track": None,
-                "position_ms": 0,
-                "playback_started_at": None,
-                "message": "Queue is empty"
-            }
+            return format_playback_state(
+                is_playing=False,
+                current_track=None,
+                position_ms=0,
+                playback_started_at=None
+            )
 
     async def _cancel_session_task(self, session_id: str):
         """Cancel background task for a session"""

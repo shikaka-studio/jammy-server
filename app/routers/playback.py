@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from app.services.supabase_service import SupabaseService
 from app.services.playback_manager import PlaybackManager
 from app.dependencies import verify_room_host
+from app.utils.formatters import format_playback_state
 
 router = APIRouter()
 supabase_service = SupabaseService()
@@ -45,13 +46,12 @@ async def get_room_playback_state(code: str):
             return state
         except Exception:
             # No active session, return empty state
-            return {
-                "is_playing": False,
-                "current_track": None,
-                "position_ms": 0,
-                "duration_ms": 0,
-                "playback_started_at": None
-            }
+            return format_playback_state(
+                is_playing=False,
+                current_track=None,
+                position_ms=0,
+                playback_started_at=None
+            )
     except HTTPException:
         raise
     except Exception as e:

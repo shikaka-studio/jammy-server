@@ -1,6 +1,7 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from app.services.websocket_manager import websocket_manager
 from app.services.supabase_service import SupabaseService
+from app.utils.formatters import format_queue_update
 
 router = APIRouter()
 supabase_service = SupabaseService()
@@ -76,47 +77,10 @@ async def websocket_endpoint(
                     websocket,
                     {
                         "type": "queue_update",
-                        "data": {
-                            "queue": [
-                                {
-                                    "id": s["id"],
-                                    "title": s["song"]["title"],
-                                    "artist": s["song"]["artist"],
-                                    "album": s["song"].get("album"),
-                                    "album_art_url": s["song"]["album_art_url"],
-                                    "duration_ms": s["song"]["duration_ms"],
-                                    "spotify_id": s["song"]["spotify_id"],
-                                    "spotify_uri": s["song"]["spotify_uri"],
-                                    "added_by": {
-                                        "id": s["user"]["id"],
-                                        "spotify_id": s["user"]["spotify_id"],
-                                        "display_name": s["user"]["display_name"],
-                                        "profile_image_url": s["user"]["profile_image_url"]
-                                    } if s.get("user") else None
-                                }
-                                for s in queue.data
-                            ] if queue.data else [],
-                            "recently_played": [
-                                {
-                                    "id": s["id"],
-                                    "title": s["song"]["title"],
-                                    "artist": s["song"]["artist"],
-                                    "album": s["song"].get("album"),
-                                    "album_art_url": s["song"]["album_art_url"],
-                                    "duration_ms": s["song"]["duration_ms"],
-                                    "spotify_id": s["song"]["spotify_id"],
-                                    "spotify_uri": s["song"]["spotify_uri"],
-                                    "played_at": s.get("played_at"),
-                                    "added_by": {
-                                        "id": s["user"]["id"],
-                                        "spotify_id": s["user"]["spotify_id"],
-                                        "display_name": s["user"]["display_name"],
-                                        "profile_image_url": s["user"]["profile_image_url"]
-                                    } if s.get("user") else None
-                                }
-                                for s in recently_played.data
-                            ] if recently_played.data else []
-                        }
+                        "data": format_queue_update(
+                            queue.data if queue.data else [],
+                            recently_played.data if recently_played.data else []
+                        )
                     }
                 )
 
