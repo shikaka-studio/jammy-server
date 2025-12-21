@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
-from app.routers import auth, room, song, playback, websocket
+from app.api.v1 import auth, room, song, playback, websocket
 from app.services.playback_manager import PlaybackManager
 from app.services.supabase_service import SupabaseService
 
@@ -43,23 +43,30 @@ app = FastAPI(
     title="Jammy Server",
     description="Backend for collaborative Spotify listening rooms",
     version="1.0.0",
+    debug=settings.debug,
+    docs_url="/docs" if settings.is_development else None,
+    redoc_url="/redoc" if settings.is_development else None,
     lifespan=lifespan
 )
 
 # CORS middleware for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url, settings.full_frontend_url],
+    allow_origins=settings.allowed_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Include routers
-app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
-app.include_router(room.router, prefix="/rooms", tags=["Rooms"])
-app.include_router(song.router, prefix="/songs", tags=["Songs"])
-app.include_router(playback.router, prefix="/playback", tags=["Playback"])
+# OAuth endpoints (no /api/v1 prefix for Spotify redirects)
+app.include_router(auth.oauth_router, prefix="/auth", tags=["OAuth"])
+
+# API v1 endpoints
+app.include_router(auth.router, prefix=f"{settings.api_v1_prefix}/auth", tags=["Authentication"])
+app.include_router(room.router, prefix=f"{settings.api_v1_prefix}/rooms", tags=["Rooms"])
+app.include_router(song.router, prefix=f"{settings.api_v1_prefix}/songs", tags=["Songs"])
+app.include_router(playback.router, prefix=f"{settings.api_v1_prefix}/playback", tags=["Playback"])
 app.include_router(websocket.router, tags=["WebSocket"])
 
 

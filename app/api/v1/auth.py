@@ -8,13 +8,18 @@ from app.config import get_settings
 from app.schemas.auth import UserProfileResponse, RefreshTokenResponse, LogoutResponse
 import secrets
 
+# Router for protected API endpoints
 router = APIRouter()
+
+# Router for OAuth endpoints (no /api/v1 prefix)
+oauth_router = APIRouter()
+
 settings = get_settings()
 spotify_service = SpotifyService()
 supabase_service = SupabaseService()
 
 
-@router.get("/login")
+@oauth_router.get("/login")
 async def login():
     """Initiate Spotify OAuth flow"""
     state = secrets.token_urlsafe(16)
@@ -22,7 +27,7 @@ async def login():
     return RedirectResponse(url=auth_url)
 
 
-@router.get("/callback")
+@oauth_router.get("/callback")
 async def callback(code: str = Query(...), state: str = Query(None)):
     """Handle Spotify OAuth callback"""
     try:
