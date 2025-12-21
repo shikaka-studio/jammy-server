@@ -158,15 +158,16 @@ CREATE TRIGGER update_session_updated_at BEFORE UPDATE ON session
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================================================
--- ROW LEVEL SECURITY (Optional - Configure based on your needs)
+-- ROW LEVEL SECURITY (RLS) SETUP
 -- ============================================================================
+
 -- Example: Enable RLS on tables (customize policies as needed)
--- ALTER TABLE "user" ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE room ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE session ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE song ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE session_song ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE room_member ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "user" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "room" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "session" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "song" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "session_song" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "room_member" ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================================
 -- HELPER FUNCTIONS (Optional utility functions)
