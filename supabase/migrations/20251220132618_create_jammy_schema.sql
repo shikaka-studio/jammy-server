@@ -1,14 +1,11 @@
 -- Jammy Server Database Schema
 -- Supabase PostgreSQL Migration Script
 
--- Enable UUID extension if not already enabled
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
 -- ============================================================================
 -- USERS TABLE
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS "user" (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     spotify_id VARCHAR(255) UNIQUE NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     email VARCHAR(255),
@@ -28,7 +25,7 @@ CREATE INDEX idx_user_spotify_id ON "user"(spotify_id);
 -- ROOMS TABLE
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS room (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     code VARCHAR(10) UNIQUE NOT NULL,
     name VARCHAR(255) NOT NULL,
     description TEXT,
@@ -48,7 +45,7 @@ CREATE INDEX idx_room_host_id ON room(host_id);
 -- SESSIONS TABLE
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS session (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     room_id UUID NOT NULL REFERENCES room(id) ON DELETE CASCADE,
     is_active BOOLEAN DEFAULT TRUE,
     current_song_id UUID, -- References song table, added later with FK
@@ -72,7 +69,7 @@ CREATE UNIQUE INDEX idx_session_one_active_per_room
 -- SONGS TABLE
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS song (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     spotify_id VARCHAR(255) UNIQUE NOT NULL,
     title VARCHAR(500) NOT NULL,
     artist VARCHAR(500) NOT NULL,
@@ -90,7 +87,7 @@ CREATE INDEX idx_song_spotify_id ON song(spotify_id);
 -- SESSION_SONG (Queue) TABLE
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS session_song (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id UUID NOT NULL REFERENCES session(id) ON DELETE CASCADE,
     song_id UUID NOT NULL REFERENCES song(id) ON DELETE CASCADE,
     position INTEGER NOT NULL,
@@ -113,7 +110,7 @@ CREATE UNIQUE INDEX idx_session_song_unique_position
 -- ROOM_MEMBER (Junction) TABLE
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS room_member (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     room_id UUID NOT NULL REFERENCES room(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
     joined_at TIMESTAMPTZ DEFAULT NOW()
