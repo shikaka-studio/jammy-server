@@ -22,7 +22,8 @@ class SupabaseService:
         access_token: str,
         refresh_token: str,
         product: str,
-        profile_image_url: str | None = None
+        profile_image_url: str | None = None,
+        token_expires_at: str | None = None
     ):
         data = {
             "spotify_id": spotify_id,
@@ -31,123 +32,351 @@ class SupabaseService:
             "access_token": access_token,
             "refresh_token": refresh_token,
             "product": product,
-            "profile_image_url": profile_image_url
+            "profile_image_url": profile_image_url,
+            "token_expires_at": token_expires_at
         }
-        return self.client.table("users").upsert(data, on_conflict="spotify_id").execute()
+        return self.client.table("user").upsert(data, on_conflict="spotify_id").execute()
 
     async def get_user_by_spotify_id(self, spotify_id: str):
-        return self.client.table("users").select("*").eq("spotify_id", spotify_id).single().execute()
+        return self.client.table("user").select("*").eq("spotify_id", spotify_id).single().execute()
 
     async def get_user_by_id(self, user_id: str):
-        return self.client.table("users").select("*").eq("id", user_id).single().execute()
+        return self.client.table("user").select("*").eq("id", user_id).single().execute()
 
-    async def update_user_tokens(self, spotify_id: str, access_token: str, refresh_token: str | None = None):
+    async def update_user_tokens(
+        self,
+        spotify_id: str,
+        access_token: str,
+        refresh_token: str | None = None,
+        token_expires_at: str | None = None
+    ):
+        """
+        Update user tokens.
+
+        Args:
+            spotify_id: User's Spotify ID
+            access_token: New access token (required)
+            refresh_token: New refresh token (optional)
+            token_expires_at: Token expiration timestamp (optional)
+        """
         data = {"access_token": access_token}
-        if refresh_token:
+
+        # Only update optional fields if explicitly provided
+        if refresh_token is not None:
             data["refresh_token"] = refresh_token
-        return self.client.table("users").update(data).eq("spotify_id", spotify_id).execute()
+        if token_expires_at is not None:
+            data["token_expires_at"] = token_expires_at
+
+        return self.client.table("user").update(data).eq("spotify_id", spotify_id).execute()
 
     # ==================== ROOM OPERATIONS ====================
 
-    async def create_room(self, name: str, host_id: str, room_code: str):
+    async def create_room(
+        self,
+        name: str,
+        host_id: str,
+        code: str,
+        description: str | None = None,
+        cover_image_url: str | None = None,
+        tags: list[str] | None = None
+    ):
         data = {
             "name": name,
             "host_id": host_id,
-            "room_code": room_code,
-            "is_active": True
+            "code": code,
+            "is_active": True,
+            "description": description,
+            "cover_image_url": cover_image_url,
+            "tags": tags
         }
-        return self.client.table("rooms").insert(data).execute()
+        return self.client.table("room").insert(data).execute()
 
-    async def get_room_by_code(self, room_code: str):
-        return self.client.table("rooms").select("*").eq("room_code", room_code).eq("is_active", True).single().execute()
+    async def get_room_by_code(self, code: str):
+        return self.client.table("room").select("*").eq("code", code).eq("is_active", True).single().execute()
 
     async def get_room_by_id(self, room_id: str):
-        return self.client.table("rooms").select("*").eq("id", room_id).single().execute()
+        return self.client.table("room").select("*").eq("id", room_id).single().execute()
 
     async def get_all_rooms(self):
-        return self.client.table("rooms").select("*, host:users!host_id(*)").execute()
+        """Get all rooms - only returns host_id, not sensitive host data"""
+        return self.client.table("room").select("*").execute()
 
     async def get_rooms_by_host(self, host_id: str):
-        return self.client.table("rooms").select("*").eq("host_id", host_id).eq("is_active", True).execute()
+        return self.client.table("room").select("*").eq("host_id", host_id).eq("is_active", True).execute()
 
-    async def update_room_playback(self, room_id: str, track_uri: str, position_ms: int):
-        data = {
-            "current_track_uri": track_uri,
-            "current_position_ms": position_ms
-        }
-        return self.client.table("rooms").update(data).eq("id", room_id).execute()
+    async def update_room(self, room_id: str, **kwargs):
+        """
+        Update room fields dynamically.
+
+        Args:
+            room_id: Room ID
+            **kwargs: Fields to update (name, description, cover_image_url, tags)
+        """
+        # Validate and filter allowed fields for security
+        allowed_fields = {"name", "description", "cover_image_url", "tags"}
+        data = {k: v for k, v in kwargs.items() if k in allowed_fields}
+
+        if not data:
+            raise ValueError("No valid fields provided for update")
+
+        return self.client.table("room").update(data).eq("id", room_id).execute()
 
     async def close_room(self, room_id: str):
-        return self.client.table("rooms").update({"is_active": False}).eq("id", room_id).execute()
+        return self.client.table("room").update({"is_active": False}).eq("id", room_id).execute()
 
     # ==================== ROOM MEMBERS ====================
 
     async def join_room(self, room_id: str, user_id: str):
         data = {"room_id": room_id, "user_id": user_id}
-        return self.client.table("room_members").upsert(data, on_conflict="room_id,user_id").execute()
+        return self.client.table("room_member").upsert(data, on_conflict="room_id,user_id").execute()
 
     async def leave_room(self, room_id: str, user_id: str):
-        return self.client.table("room_members").delete().eq("room_id", room_id).eq("user_id", user_id).execute()
+        return self.client.table("room_member").delete().eq("room_id", room_id).eq("user_id", user_id).execute()
 
     async def get_room_members(self, room_id: str):
-        return self.client.table("room_members").select("*, users(*)").eq("room_id", room_id).execute()
+        """Get room members - only returns safe user fields (id, spotify_id, display_name, profile_image_url)"""
+        return self.client.table("room_member").select("*, user(id, spotify_id, display_name, profile_image_url)").eq("room_id", room_id).execute()
 
     async def is_user_in_room(self, room_id: str, user_id: str):
-        result = self.client.table("room_members").select("*").eq("room_id", room_id).eq("user_id", user_id).execute()
+        result = self.client.table("room_member").select("*").eq("room_id", room_id).eq("user_id", user_id).execute()
         return len(result.data) > 0
 
-    # ==================== SONG QUEUE ====================
+    # ==================== SESSION OPERATIONS ====================
 
-    async def add_song_to_queue(
-        self,
-        room_id: str,
-        spotify_track_id: str,
-        added_by: str,
-        track_name: str,
-        artist_name: str,
-        album_image_url: str | None = None,
-        duration_ms: int | None = None
-    ):
+    async def create_session(self, room_id: str):
+        """Create a new session for a room"""
         data = {
             "room_id": room_id,
-            "spotify_track_id": spotify_track_id,
-            "added_by": added_by,
-            "track_name": track_name,
-            "artist_name": artist_name,
-            "album_image_url": album_image_url,
-            "duration_ms": duration_ms,
-            "is_played": False
+            "is_active": True
         }
-        return self.client.table("song_queue").insert(data).execute()
+        return self.client.table("session").insert(data).execute()
 
-    async def get_room_queue(self, room_id: str):
+    async def get_active_session(self, room_id: str):
+        """Get the active session for a room"""
         return (
-            self.client.table("song_queue")
-            .select("*, users:added_by(display_name, profile_image_url)")
+            self.client.table("session")
+            .select("*")
             .eq("room_id", room_id)
-            .eq("is_played", False)
-            .order("created_at")
+            .eq("is_active", True)
+            .single()
             .execute()
         )
 
-    async def get_queue_history(self, room_id: str, limit: int = 20):
+    async def get_session_by_id(self, session_id: str):
+        """Get session by ID"""
+        return self.client.table("session").select("*").eq("id", session_id).single().execute()
+
+    async def get_all_active_sessions(self):
+        """Get all active sessions"""
+        return self.client.table("session").select("*").eq("is_active", True).execute()
+
+    async def end_session(self, session_id: str):
+        """End a session by setting is_active to False and setting ended_at"""
+        from datetime import datetime, timezone
+        data = {
+            "is_active": False,
+            "ended_at": datetime.now(timezone.utc).isoformat()
+        }
+        return self.client.table("session").update(data).eq("id", session_id).execute()
+
+    async def update_session_playback_state(
+        self,
+        session_id: str,
+        **kwargs
+    ):
+        """
+        Update playback state for a session.
+
+        Args:
+            session_id: Session ID
+            current_song_id: Song ID (pass None to reset)
+            current_song_start: ISO timestamp when song started (pass None to reset)
+            paused_position_ms: Position in ms when paused (pass 0 to reset)
+        """
+        # Only include fields that were explicitly provided
+        # This allows us to set fields to None or 0 for reset
+        valid_fields = {"current_song_id", "current_song_start", "paused_position_ms"}
+        data = {k: v for k, v in kwargs.items() if k in valid_fields}
+
+        return self.client.table("session").update(data).eq("id", session_id).execute()
+
+    # ==================== SONG OPERATIONS (song table) ====================
+
+    async def create_or_get_song(
+        self,
+        spotify_id: str,
+        title: str,
+        artist: str,
+        spotify_uri: str,
+        duration_ms: int,
+        album: str | None = None,
+        album_art_url: str | None = None
+    ):
+        """Create a song in the song table or get existing one by spotify_id"""
+        # Try to get existing song first
+        try:
+            existing = await self.get_song_by_spotify_id(spotify_id)
+            if existing.data:
+                return existing
+        except Exception:
+            pass
+
+        # Song doesn't exist, create it
+        data = {
+            "spotify_id": spotify_id,
+            "title": title,
+            "artist": artist,
+            "album": album,
+            "duration_ms": duration_ms,
+            "album_art_url": album_art_url,
+            "spotify_uri": spotify_uri
+        }
+        return self.client.table("song").insert(data).execute()
+
+    async def get_song_by_spotify_id(self, spotify_id: str):
+        """Get a song from the song table by Spotify ID"""
+        return self.client.table("song").select("*").eq("spotify_id", spotify_id).single().execute()
+
+    async def get_song_by_id(self, song_id: str):
+        """Get a song from the song table by ID"""
+        return self.client.table("song").select("*").eq("id", song_id).single().execute()
+
+    # ==================== SESSION SONG OPERATIONS (session_song table) ====================
+
+    async def add_song_to_session(
+        self,
+        session_id: str,
+        song_id: str,
+        added_by_user_id: str,
+        position: int
+    ):
+        """Add a song to a session's queue"""
+        data = {
+            "session_id": session_id,
+            "song_id": song_id,
+            "added_by_user_id": added_by_user_id,
+            "position": position,
+            "played": False
+        }
+        return self.client.table("session_song").insert(data).execute()
+
+    async def get_session_queue(self, session_id: str):
+        """Get all unplayed songs in session queue, ordered by position"""
         return (
-            self.client.table("song_queue")
-            .select("*, users:added_by(display_name)")
-            .eq("room_id", room_id)
-            .eq("is_played", True)
-            .order("created_at", desc=True)
-            .limit(limit)
+            self.client.table("session_song")
+            .select("*, song:song_id(*), user:added_by_user_id(id, spotify_id, display_name, profile_image_url)")
+            .eq("session_id", session_id)
+            .eq("played", False)
+            .order("position")
             .execute()
         )
 
-    async def mark_song_played(self, song_id: str):
-        return self.client.table("song_queue").update({"is_played": True}).eq("id", song_id).execute()
+    async def get_recently_played_songs(self, session_id: str):
+        """Get recently played songs in session, ordered by played_at (most recent first)"""
+        return (
+            self.client.table("session_song")
+            .select("*, song:song_id(*), user:added_by_user_id(id, spotify_id, display_name, profile_image_url)")
+            .eq("session_id", session_id)
+            .eq("played", True)
+            .order("played_at", desc=True)
+            .execute()
+        )
 
-    async def remove_song_from_queue(self, song_id: str):
-        return self.client.table("song_queue").delete().eq("id", song_id).execute()
+    async def get_next_session_song(self, session_id: str):
+        """Get the next unplayed song in session queue"""
+        return (
+            self.client.table("session_song")
+            .select("*, song:song_id(*)")
+            .eq("session_id", session_id)
+            .eq("played", False)
+            .order("position")
+            .limit(1)
+            .execute()
+        )
 
-    async def reorder_queue(self, song_id: str, new_position: int):
-        # This would require more complex logic with a position field
-        # For now, we'll keep it simple with created_at ordering
-        pass
+    async def get_session_song_by_id(self, session_song_id: str):
+        """Get a session_song by ID"""
+        return self.client.table("session_song").select("*, song:song_id(*)").eq("id", session_song_id).execute()
+
+    async def mark_session_song_played(self, session_song_id: str):
+        """Mark a session_song as played"""
+        from datetime import datetime, timezone
+        data = {
+            "played": True,
+            "played_at": datetime.now(timezone.utc).isoformat()
+        }
+        return self.client.table("session_song").update(data).eq("id", session_song_id).execute()
+
+    async def remove_session_song(self, session_song_id: str):
+        """Remove a song from session queue"""
+        return self.client.table("session_song").delete().eq("id", session_song_id).execute()
+
+    async def get_next_position_in_session(self, session_id: str) -> int:
+        """Get the next position number for adding a song to session queue"""
+        result = (
+            self.client.table("session_song")
+            .select("position")
+            .eq("session_id", session_id)
+            .order("position", desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        if result.data and len(result.data) > 0:
+            return result.data[0]["position"] + 1
+        return 0
+
+    # ==================== STORAGE OPERATIONS ====================
+
+    async def upload_room_cover_image(self, file_data: bytes, file_name: str, content_type: str) -> str:
+        """
+        Upload room cover image to Supabase Storage and return public URL.
+
+        Args:
+            file_data: Image file bytes
+            file_name: Name of the file
+            content_type: MIME type of the file
+
+        Returns:
+            Public URL of the uploaded image
+        """
+        bucket_name = "room-covers"
+
+        # Generate unique filename with timestamp
+        from datetime import datetime
+        import uuid
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        unique_filename = f"{timestamp}_{uuid.uuid4().hex[:8]}_{file_name}"
+
+        # Upload to Supabase Storage
+        self.client.storage.from_(bucket_name).upload(
+            path=unique_filename,
+            file=file_data,
+            file_options={"content-type": content_type}
+        )
+
+        # Get public URL
+        public_url = self.client.storage.from_(bucket_name).get_public_url(unique_filename)
+        return public_url
+
+    async def delete_room_cover_image(self, file_url: str) -> bool:
+        """
+        Delete room cover image from Supabase Storage.
+
+        Args:
+            file_url: Public URL of the image to delete
+
+        Returns:
+            True if deletion was successful
+        """
+        bucket_name = "room-covers"
+
+        # Extract filename from URL
+        # URL format: https://{project}.supabase.co/storage/v1/object/public/room-covers/{filename}
+        filename = file_url.split("/")[-1]
+
+        try:
+            self.client.storage.from_(bucket_name).remove([filename])
+            return True
+        except Exception:
+            return False
